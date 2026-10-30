@@ -264,6 +264,6 @@ kv           杂项（锁、令牌、上次巩固时间、版本）
 | A1 | AI 宿主 | **继续用 DSH** | 自研 agent loop（工作量大 3 倍） |
 | A2 | 记忆接入 | **HTTP 直连 mnema** | MCP（多一层进程，延迟高） |
 | A3 | 存储 | **SQLite** | 保持 JSON（不推荐） |
-| A4 | SnowLuma 连接 | **Node 内置 WebSocket** | `ws` 依赖 |
+| A4 | SnowLuma 连接 | **`@snowluma/sdk`（官方）** | 自己实现 OneBot WS 协议（不推荐：重复造轮子） |
 | A5 | 工具协议 | **MCP（与 v1 一致）** | 直接函数调用（不兼容现有客户端） |
 | A6 | 控制台 | **独立轻量页面** | 复用 v1 页面（耦合深） |

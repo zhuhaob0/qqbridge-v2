@@ -13,7 +13,7 @@ qqbridge-v2/
 │   ├── index.js                 进程入口（装配 + 启动）
 │   ├── config.js                配置加载与校验
 │   ├── transport/
-│   │   ├── snowluma.js          WS 客户端（重连/心跳/背压）
+│   │   ├── snowluma.js          基于 @snowluma/sdk 的连接与事件订阅（重连/背压）
 │   │   └── decode.js            原始事件 → NormalizedMessage
 │   ├── router/
 │   │   ├── router.js            分发 + 幂等
