@@ -230,11 +230,17 @@ export async function migrateV1({ v1Dir, db, memory = null, dryRun = false, logg
   }
 
   // 7) 性格（role.md 或 roles/*.md）
+  // 角色卡选择：v1 config.role.name → 小鲸鱼.md → 其余第一个
+  const v1Config = readJson(path.join(v1Dir, 'config.json'), {}) ?? {};
+  const roleFiles = safeReaddir(path.join(v1Dir, 'roles')).filter((n) => n.endsWith('.md') && n !== 'README.md');
+  const roleName = String(v1Config?.role?.name ?? v1Config?.roleName ?? '').trim();
+  const preferred = roleName && roleFiles.includes(`${roleName}.md`)
+    ? `${roleName}.md`
+    : roleFiles.includes('小鲸鱼.md') ? '小鲸鱼.md' : roleFiles[0];
   const personaCandidates = [
     path.join(v1Dir, 'role.md'),
-    ...safeReaddir(path.join(v1Dir, 'roles'))
-      .filter((name) => name.endsWith('.md') && name !== 'README.md')
-      .map((name) => path.join(v1Dir, 'roles', name)),
+    ...(preferred ? [path.join(v1Dir, 'roles', preferred)] : []),
+    ...roleFiles.filter((n) => n !== preferred).map((n) => path.join(v1Dir, 'roles', n)),
   ];
   for (const file of personaCandidates) {
     const markdown = readText(file);

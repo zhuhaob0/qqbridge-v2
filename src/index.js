@@ -52,6 +52,10 @@ try {
   throw error;
 }
 
+// DSH 冷启动时端口会变：由守护进程通过 DSH_BASE_URL 注入最新地址
+const envDshBase = process.env.DSH_BASE_URL;
+if (envDshBase) config.agent = { ...(config.agent ?? {}), baseUrl: envDshBase };
+
 const logger = createLogger({ level: config.log?.level ?? 'info', dir: config.log?.dir ?? '' });
 
 const lock = acquireLock(path.resolve('./state/bridge.lock'));
