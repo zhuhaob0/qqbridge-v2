@@ -164,3 +164,36 @@ node tools/migrate-v1.mjs --v1 <v1目录> --db ./state/qqbridge.db --dry-run
 | 语音识别 | `sensevoice` / `whisper` provider 需装模型与脚本；默认 `none` |
 | 记忆 | mnema 需先运行并导入（`/v1/import`） |
 | 群白名单 | 空列表 + `emptyGroupsMeansAll` 语义保留，切换时确认配置 |
+
+---
+
+## 8. 依赖安装的坑（实测）
+
+### `@snowluma/sdk@1.14.20` 的 ESM 扩展名缺失
+
+npm 上这个版本的 `dist/*.js` 使用**无扩展名**的相对导入：
+
+```js
+export { SnowLumaApiClient } from './client/api-client';   // ← Node ESM 会报 ERR_MODULE_NOT_FOUND
+```
+
+而 qq-bridge(v1) 本地安装的那份带 `.js`（`./client/api-client.js`），所以 v1 能跑、全新安装却跑不起来。
+
+**处理**：`postinstall` 自动跑 `tools/fix-snowluma-esm.mjs`，把 dist 下所有相对导入补上 `.js`
+（只在该文件确实存在时才补）。实测修复 45 处 / 13 个文件，之后 `import '@snowluma/sdk'` 正常。
+
+**验证**：
+
+```bash
+npm run verify   # 逐项检查 SDK/DSH/工具表
+```
+
+### 历史消息方法名
+
+SDK 里是 `getFriendMessageHistory` / `getGroupMessageHistory`（不是 `...MsgHistory`），
+参数形状为 `{ user_id|group_id, count }`。`transport.history()` 已按实测签名实现。
+
+### DSH 客户端
+
+`vendor/dsh-client.js` 依赖 `@deepseek-ai/dsh-host-apiproxy` 与 `js-yaml`，装上即可加载
+（`npm run verify` 会检查 `NodeApiClient` 的 `callUnary` / `ensureAuth` / `openRemoteEventStream`）。

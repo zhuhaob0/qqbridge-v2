@@ -1,31 +1,33 @@
 {
-    "name":  "qqbridge-v2",
-    "version":  "0.1.0",
-    "private":  true,
-    "description":  "QQ (OneBot/SnowLuma) bridge for DSH agents: layered transport/router/wake/orchestrator, external memory (mnema), SQLite state.",
-    "type":  "module",
-    "license":  "MIT",
-    "engines":  {
-                    "node":  "\u003e=22"
-                },
-    "files":  [
-                  "src",
-                  "docs",
-                  "README.md",
-                  "LICENSE"
-              ],
-    "repository":  {
-                       "type":  "git",
-                       "url":  "git+https://github.com/zhuhaob0/qqbridge-v2.git"
-                   },
-    "scripts":  {
-                    "start":  "node src/index.js",
-                    "test":  "node --test",
-                    "migrate":  "node tools/migrate-v1.mjs"
-                },
-    "dependencies":  {
-                         "@deepseek-ai/dsh-host-apiproxy":  "0.1.1-rc.2",
-                         "@snowluma/sdk":  "1.14.20",
-                         "js-yaml":  "^4.3.2"
-                     }
+  "name": "qqbridge-v2",
+  "version": "0.1.0",
+  "private": true,
+  "description": "QQ (OneBot/SnowLuma) bridge for DSH agents: layered transport/router/wake/orchestrator, external memory (mnema), SQLite state.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "src",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhuhaob0/qqbridge-v2.git"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test",
+    "migrate": "node tools/migrate-v1.mjs",
+    "verify": "node tools/verify-integrations.mjs",
+    "postinstall": "node tools/fix-snowluma-esm.mjs"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-host-apiproxy": "0.1.1-rc.2",
+    "@snowluma/sdk": "1.14.20",
+    "js-yaml": "^4.3.2"
+  }
 }

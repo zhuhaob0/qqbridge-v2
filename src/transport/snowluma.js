@@ -153,16 +153,16 @@ export function createSnowLumaTransport({
       return { ok: true, sticker: { id: String(messageId), desc: remark, url: file } };
     },
 
+    /** 补拉历史（切换窗口用）。SDK 方法名实测为 getFriend/GroupMessageHistory(params)。 */
     async history(sessionKey, { limit = 20 } = {}) {
       const parsed = parseSessionKey(sessionKey);
       if (!parsed) return [];
       try {
-        if (parsed.kind === 'direct') {
-          const res = await client.getFriendMsgHistory?.(Number(parsed.id), limit);
-          return res?.data ?? res ?? [];
-        }
-        const res = await client.getGroupMsgHistory?.(Number(parsed.id), limit);
-        return res?.data ?? res ?? [];
+        const result = parsed.kind === 'direct'
+          ? await client.getFriendMessageHistory?.({ user_id: Number(parsed.id), count: limit })
+          : await client.getGroupMessageHistory?.({ group_id: Number(parsed.id), count: limit });
+        const list = result?.messages ?? result?.data ?? result ?? [];
+        return Array.isArray(list) ? list : [];
       } catch (error) {
         logger?.warn?.('拉取历史失败', { key: sessionKey, reason: error?.message ?? String(error) });
         return [];
