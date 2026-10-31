@@ -2,7 +2,8 @@
  * 唤醒策略（纯函数）：什么时候该醒
  */
 
-const QUESTION_RE = /(吗|呢|怎么|为什么|为啥|能不能|可不可以|是不是|有没有)[？?]?$|[？?]$/;
+// 句尾问号 + 疑问词（不要求出现在句尾："你看到了吗，描述一下"也算提问）
+const QUESTION_RE = /[？?]|吗|呢|怎么|为什么|为啥|能不能|可不可以|是不是|有没有/;
 
 export function inDiving(wakeState = {}, now = Date.now()) {
   if (wakeState.mode !== 'diving') return false;

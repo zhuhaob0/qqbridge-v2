@@ -41,6 +41,7 @@ export function createOrchestrator({
 
   async function runOnce(sessionKey, { items = [] } = {}) {
     const started = clock().getTime();
+    logger?.info?.('回合开始', { key: sessionKey, queue: chains.size, items: items.length });
     const session = q.getSession(db, sessionKey);
     if (session && !session.agentToken) session.agentToken = q.ensureAgentToken(db, sessionKey);
     if (!session) {
@@ -62,12 +63,15 @@ export function createOrchestrator({
 
     // ① 记忆（失败不影响对话）
     let memoryData = null;
+    let memoryMs = 0;
     if (memory) {
+      const memStart = clock().getTime();
       const lastText = items.at(-1)?.text ?? recent.at(-1)?.text ?? '';
       const recalled = await memory.recall({ channelId, participants, query: lastText });
       const persona = await memory.persona();
       const narrative = await memory.narrative();
       memoryData = { rendered: recalled?.rendered ?? '', persona, narrative };
+      memoryMs = clock().getTime() - memStart;
     }
 
     // ② 提示词
@@ -84,6 +88,7 @@ export function createOrchestrator({
       key: sessionKey,
       promptLen: prompt.length,
       memoryLen: String(memoryData?.rendered ?? '').length,
+      memoryMs,
       sharedRecent: String(memoryData?.rendered ?? '').includes('来自其它会话') ? 'yes' : 'no',
       recentCount: recent.length,
     });
