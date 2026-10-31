@@ -130,6 +130,53 @@ export function createSnowLumaTransport({
       }
     },
 
+    /** 取一张图片的字节（get_image 优先，回落到 url 下载）。返回 { buffer, mimeType } 或 null */
+    async getImage(file, { maxBytes = 1024 * 1024 } = {}) {
+      const pickBase64 = (obj) => {
+        for (const v of [obj?.data, obj?.base64, obj?.file, obj?.raw]) {
+          if (typeof v === 'string' && v.length > 64) {
+            const s = v.startsWith('base64://') ? v.slice(9) : v;
+            if (/^[A-Za-z0-9+/=\s]+$/.test(s.slice(0, 128))) return s.replace(/\s+/g, '');
+          }
+        }
+        return null;
+      };
+      const sniff = (buf) => {
+        if (buf[0] === 0x89 && buf[1] === 0x50) return 'image/png';
+        if (buf[0] === 0xff && buf[1] === 0xd8) return 'image/jpeg';
+        if (buf.slice(0, 3).toString() === 'GIF') return 'image/gif';
+        if (buf.slice(0, 4).toString() === 'RIFF') return 'image/webp';
+        return null;
+      };
+      try {
+        if (typeof client.getImage === 'function' && file) {
+          const info = await client.getImage({ file: String(file) });
+          const b64 = pickBase64(info);
+          if (b64) {
+            const buf = Buffer.from(b64, 'base64');
+            if (buf.length > 0 && buf.length <= maxBytes) {
+              const mime = sniff(buf);
+              if (mime) return { buffer: buf, mimeType: mime };
+            }
+          }
+          const url = info?.url ?? info?.file_url ?? info?.data?.url ?? null;
+          if (url) {
+            const res = await fetch(url);
+            if (res.ok) {
+              const buf = Buffer.from(await res.arrayBuffer());
+              if (buf.length > 0 && buf.length <= maxBytes) {
+                const mime = sniff(buf);
+                if (mime) return { buffer: buf, mimeType: mime };
+              }
+            }
+          }
+        }
+      } catch (error) {
+        logger?.warn?.('取图片失败', { reason: error?.message ?? String(error) });
+      }
+      return null;
+    },
+
     async messageDetail(messageId) {
       if (typeof client.getMessage !== 'function') return null;
       try {

@@ -72,6 +72,28 @@ export function createOrchestrator({
       config,
     });
 
+    // ②.5 收集本轮要「看」的图片（最近一条带图的消息，最多 2 张）
+    const images = [];
+    if (typeof qq.getImage === 'function') {
+      const withImages = recent.filter((m) => m.direction === 'inbound' && (m.media ?? []).some((x) => x.type === 'image'));
+      for (const m of withImages.slice(-2)) {
+        for (const med of m.media.filter((x) => x.type === 'image')) {
+          if (!med.file) continue;
+          const img = await qq.getImage(med.file);
+          if (img?.buffer) images.push(img);
+        }
+      }
+    }
+    const promptContent = [
+      { type: 'text', text: prompt },
+      ...images.slice(0, 2).map((img, i) => ({
+        type: 'image',
+        mediaType: img.mimeType,
+        data: img.buffer.toString('base64'),
+        name: `qq-${i + 1}`,
+      })),
+    ];
+
     // ③ agent
     let text = '';
     try {
@@ -80,7 +102,7 @@ export function createOrchestrator({
         const sessionId = session.agentSession ?? await agent.ensureSession(sessionKey, { preset: config?.agent?.preset });
         if (!session.agentSession) q.setAgentSession(db, sessionKey, sessionId);
         try {
-          text = await collectText(agent.send(sessionId, prompt));
+          text = await collectText(agent.send(sessionId, images.length ? promptContent : prompt));
           break;
         } catch (error) {
           const reason = String(error?.message ?? error);

@@ -99,11 +99,11 @@ export function createDshAgent({
       waiters.set(sessionId, { collector, resolve, reject, timer });
     });
 
-    await api.sessions.prompt({
-      sessionId,
-      mode: 'queue',
-      content: [{ type: 'text', text: String(message ?? '') }],
-    });
+    // message 可以是字符串，也可以是内容块数组（文本 + 图片），后者用于让模型真正「看到」图片
+    const content = Array.isArray(message)
+      ? message
+      : [{ type: 'text', text: String(message ?? '') }];
+    await api.sessions.prompt({ sessionId, mode: 'queue', content });
 
     const ended = await result;
     if (ended?.reason?.kind && ended.reason.kind !== 'completed') {

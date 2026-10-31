@@ -41,7 +41,10 @@ export function buildPrompt({ persona, narrative, memoryRendered, session, recen
 
   // 回复要求
   const rules = ['【怎么回】'];
-  rules.push('- 分条说，一条一个意群，多数不超过 30 字');
+  // 旧桥接的节奏规则是「分条」，但实测会导致每个回合都拆成两条（用户反馈"总是回两条"）。
+  // 改成：默认一条，只有确实需要停顿/换话题才发第二条。
+  rules.push('- 默认只发一条消息；确实需要停顿、或者要换成不相关的话题，才发第二条');
+  rules.push('- 不要为了"像真人"而机械拆句，一条说完就行');
   rules.push('- 不要客服腔；可以简短、可以拒绝、可以装没看见');
   if (session?.kind === 'public') {
     rules.push('- 这是在群里，别把私聊里的细节带出来');
