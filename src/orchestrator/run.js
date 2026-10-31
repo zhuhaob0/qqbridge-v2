@@ -68,7 +68,8 @@ export function createOrchestrator({
           break;
         } catch (error) {
           const reason = String(error?.message ?? error);
-          const staleSession = /session|not.?found|不存在|404|invalid|unknown/i.test(reason);
+          // 超时也按「会话可能失效」处理：DSH 重启后旧 sessionId 收不到 turn 事件
+          const staleSession = /session|not.?found|不存在|404|invalid|unknown|超时|timeout/i.test(reason);
           if (attempt === 1 || !staleSession) throw error;
           logger?.warn?.('agent 会话可能失效，重建后重试', { key: sessionKey, reason });
           q.setAgentSession(db, sessionKey, null);
