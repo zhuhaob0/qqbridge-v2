@@ -40,7 +40,7 @@ test('传输层：私聊/群聊事件转发给 router', () => {
 
 test('传输层：sendText 映射到正确的方法', async () => {
   const client = fakeClient();
-  const t = createSnowLumaTransport({ client, textFactory: (s) => ({ type: 'text', data: { text: s } }) });
+  const t = createSnowLumaTransport({ client, builder: { text: (s) => ({ type: 'text', data: { text: s } }) } });
 
   const a = await t.sendText('private:1', '你好');
   assert.equal(a.ok, true);
@@ -86,4 +86,54 @@ test('干跑模式：只记录不发送', async () => {
   assert.equal(r.ok, true);
   assert.equal(qq.sent.length, 1);
   assert.equal(qq.sent[0].message, 'hi');
+});
+
+test('传输层：图片/语音/拍一拍/成员/详情', async () => {
+  const calls = [];
+  const client = {
+    onPrivateMessage() {}, onGroupMessage() {}, onNotice() {},
+    async sendPrivateMessage(id, payload) { calls.push({ kind: 'private', id, payload }); return { message_id: 1 }; },
+    async sendGroupMessage(id, payload) { calls.push({ kind: 'group', id, payload }); return { message_id: 2 }; },
+    async getMessage(id) { return { message_id: id, message: [{ type: 'image', data: { file: 'a.png' } }] }; },
+    async getGroupMemberList(gid) { return [{ user_id: 9, nickname: '小明', card: '小明' }]; },
+    async sendPoke(uid, opts) { calls.push({ kind: 'poke', uid, opts }); },
+    async getForwardMessage(params) { return { id: params.id, messages: [] }; },
+  };
+  const built = {
+    text: (s) => ({ type: 'text', data: { text: s } }),
+    image: (s) => ({ type: 'image', data: { file: s } }),
+    record: (s) => ({ type: 'record', data: { file: s } }),
+  };
+  const t = createSnowLumaTransport({ client, builder: built, voicesDir: 'E:/tmp/voices' });
+
+  await t.sendImage('group:456', 'https://x/1.png');
+  assert.deepEqual(calls.at(-1).payload, { type: 'image', data: { file: 'https://x/1.png' } });
+
+  await t.sendVoice('private:1', '晚安.wav');
+  const voice = calls.at(-1);
+  assert.equal(voice.payload.type, 'record');
+  assert.match(voice.payload.data.file, /voices/);
+
+  const members = await t.groupMembers(456);
+  assert.equal(members[0].userId, '9');
+
+  const detail = await t.messageDetail(1);
+  assert.equal(detail.message[0].type, 'image');
+
+  const fwd = await t.forwardMsg('f1');
+  assert.equal(fwd.id, 'f1');
+
+  await t.sendPoke('group:456', 9);
+  assert.equal(calls.at(-1).opts.group_id, 456);
+});
+
+test('传输层：收藏表情从消息详情取图', async () => {
+  const client = {
+    onPrivateMessage() {}, onGroupMessage() {}, onNotice() {},
+    async getMessage(id) { return { message: [{ type: 'image', data: { file: 's.png' } }] }; },
+  };
+  const t = createSnowLumaTransport({ client });
+  const r = await t.collectSticker(1, '好图');
+  assert.equal(r.ok, true);
+  assert.equal(r.sticker.url, 's.png');
 });

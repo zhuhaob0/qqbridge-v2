@@ -22,18 +22,18 @@ export function createMemoryClient({
     return openUntil > clock();
   }
 
-  async function call(path, body) {
+  async function request(method, path, body) {
     if (circuitOpen()) return null;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const res = await fetchImpl(`${String(baseUrl).replace(/\/+$/, '')}${path}`, {
-        method: 'POST',
+        method,
         headers: {
           'content-type': 'application/json',
           ...(token ? { authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify(body ?? {}),
+        ...(method === 'GET' ? {} : { body: JSON.stringify(body ?? {}) }),
         signal: controller.signal,
       });
       if (!res.ok) throw new Error(`memory HTTP ${res.status}`);
@@ -53,6 +53,8 @@ export function createMemoryClient({
     }
   }
 
+  const call = (path, body) => request('POST', path, body);
+
   return {
     get degraded() {
       return circuitOpen();
@@ -70,6 +72,15 @@ export function createMemoryClient({
     async persona() {
       const res = await call('/v1/persona', {});
       return res?.persona ?? null;
+    },
+
+    async setPersona({ markdown, traits }) {
+      return request('PUT', '/v1/persona', { tenant, markdown, traits });
+    },
+
+    /** 批量导入（迁移用） */
+    async ingestBatch({ events = [], facts = [], interactions = [] } = {}) {
+      return call('/v1/import', { tenant, events, facts, interactions });
     },
 
     async narrative() {

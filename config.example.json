@@ -1,0 +1,85 @@
+{
+  "qq": {
+    "ownerQQ": 1000000001,
+    "selfQQ": 1000000002,
+    "snowluma": {
+      "url": "ws://127.0.0.1:3001",
+      "token": ""
+    },
+    "botNames": ["蓝色大肥鱼"]
+  },
+  "allow": {
+    "private": [2000000001],
+    "groups": [],
+    "emptyGroupsMeansAll": true
+  },
+  "memory": {
+    "enabled": true,
+    "baseUrl": "http://127.0.0.1:8321",
+    "token": "",
+    "tenant": "default",
+    "timeoutMs": 800,
+    "consolidateAt": "04:30"
+  },
+  "agent": {
+    "kind": "dsh",
+    "baseUrl": "http://127.0.0.1:3000",
+    "preset": "qq-chat-v2",
+    "sessionCwd": "./sessions"
+  },
+  "wake": {
+    "batchWindowMs": 1500,
+    "sleepObservationMs": 300000,
+    "triggers": {
+      "at": true,
+      "name": true,
+      "question": true,
+      "probability": 0.15
+    }
+  },
+  "send": {
+    "minGapMs": 600,
+    "maxGapMs": 1800,
+    "maxPerMinute": 10,
+    "splitThreshold": 60,
+    "imagesPerMinute": 2,
+    "stickersPerMinute": 2,
+    "voicesPerMinute": 2,
+    "pokesPerMinute": 3
+  },
+  "console": {
+    "port": 3100,
+    "token": ""
+  },
+  "speech": {
+    "provider": "none",
+    "voicesDir": "./audio",
+    "sensevoice": {
+      "script": "transcribe.py",
+      "model": "",
+      "python": "python",
+      "threads": 2
+    },
+    "http": {
+      "url": "",
+      "apiKey": "",
+      "model": "whisper-1"
+    },
+    "whisper": {
+      "command": "whisper",
+      "model": "small",
+      "extraArgs": []
+    }
+  },
+  "security": {
+    "sensitivePatterns": ["sk-", "token", "密码"]
+  },
+  "retain": {
+    "messagesDays": 90
+  },
+  "log": {
+    "level": "info",
+    "dir": "./state/logs",
+    "pruneAt": "04:40"
+  }
+}
