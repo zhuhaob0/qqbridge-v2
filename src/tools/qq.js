@@ -90,7 +90,15 @@ export function registerQqTools(registry) {
     },
     async run(ctx, args) {
       // 多条合并成一条发：一次调用发两条在用户看来就是「刷屏」
-      const list = (Array.isArray(args.messages) ? args.messages : [args.messages])
+      // 模型有时把数组序列化成字符串传进来（["a","b"]），先尝试还原
+      let raw = args.messages;
+      if (typeof raw === 'string' && /^\s*\[/.test(raw)) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) raw = parsed;
+        } catch { /* 不是 JSON 就按普通文本处理 */ }
+      }
+      const list = (Array.isArray(raw) ? raw : [raw])
         .map((x) => String(x ?? '').trim())
         .filter(Boolean);
       const text = list.join(' ');
