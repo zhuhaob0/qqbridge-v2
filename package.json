@@ -1,0 +1,26 @@
+{
+  "name": "qqbridge-v2",
+  "version": "0.1.0",
+  "private": true,
+  "description": "QQ (OneBot/SnowLuma) bridge for DSH agents: layered transport/router/wake/orchestrator, external memory (mnema), SQLite state.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "src",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhuhaob0/qqbridge-v2.git"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test",
+    "migrate": "node tools/migrate-v1.mjs"
+  }
+}
