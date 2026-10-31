@@ -130,51 +130,75 @@ export function createSnowLumaTransport({
       }
     },
 
-    /** 取一张图片的字节（get_image 优先，回落到 url 下载）。返回 { buffer, mimeType } 或 null */
-    async getImage(file, { maxBytes = 1024 * 1024 } = {}) {
-      const pickBase64 = (obj) => {
-        for (const v of [obj?.data, obj?.base64, obj?.file, obj?.raw]) {
-          if (typeof v === 'string' && v.length > 64) {
-            const s = v.startsWith('base64://') ? v.slice(9) : v;
-            if (/^[A-Za-z0-9+/=\s]+$/.test(s.slice(0, 128))) return s.replace(/\s+/g, '');
-          }
-        }
-        return null;
-      };
+    /**
+     * 取一张图片的字节。三条路依次尝试：
+     *   1. SnowLuma 的 get_image（返回 base64）
+     *   2. 消息里带的 url（腾讯图床，通常直接可下）
+     *   3. 失败就返回 null，让上层只带文本
+     * 返回 { buffer, mimeType, via } 或 null
+     */
+    async getImage(file, { url = '', maxBytes = 1024 * 1024 } = {}) {
       const sniff = (buf) => {
+        if (!buf || buf.length === 0) return null;
         if (buf[0] === 0x89 && buf[1] === 0x50) return 'image/png';
         if (buf[0] === 0xff && buf[1] === 0xd8) return 'image/jpeg';
         if (buf.slice(0, 3).toString() === 'GIF') return 'image/gif';
         if (buf.slice(0, 4).toString() === 'RIFF') return 'image/webp';
         return null;
       };
-      try {
-        if (typeof client.getImage === 'function' && file) {
+      const fromBase64 = (value) => {
+        if (typeof value !== 'string' || value.length < 64) return null;
+        const s = value.startsWith('base64://') ? value.slice(9) : value;
+        if (!/^[A-Za-z0-9+/=\s]+$/.test(s.slice(0, 128))) return null;
+        try { return Buffer.from(s.replace(/\s+/g, ''), 'base64'); } catch { return null; }
+      };
+      const accept = (buf, via) => {
+        if (!buf || buf.length === 0 || buf.length > maxBytes) return null;
+        const mime = sniff(buf);
+        return mime ? { buffer: buf, mimeType: mime, via } : null;
+      };
+
+      // ① get_image
+      if (typeof client.getImage === 'function' && file) {
+        try {
           const info = await client.getImage({ file: String(file) });
-          const b64 = pickBase64(info);
-          if (b64) {
-            const buf = Buffer.from(b64, 'base64');
-            if (buf.length > 0 && buf.length <= maxBytes) {
-              const mime = sniff(buf);
-              if (mime) return { buffer: buf, mimeType: mime };
-            }
+          const b64 = fromBase64(info?.data) || fromBase64(info?.base64) || fromBase64(info?.file) || fromBase64(info?.raw);
+          const got = accept(b64 ? Buffer.from(b64) : null, 'get_image');
+          if (got) return got;
+          const inner = info?.url ?? info?.file_url ?? info?.data?.url ?? '';
+          if (inner) {
+            const downloaded = await this.downloadImage(inner, maxBytes);
+            if (downloaded) return downloaded;
           }
-          const url = info?.url ?? info?.file_url ?? info?.data?.url ?? null;
-          if (url) {
-            const res = await fetch(url);
-            if (res.ok) {
-              const buf = Buffer.from(await res.arrayBuffer());
-              if (buf.length > 0 && buf.length <= maxBytes) {
-                const mime = sniff(buf);
-                if (mime) return { buffer: buf, mimeType: mime };
-              }
-            }
-          }
+        } catch (error) {
+          logger?.warn?.('get_image 失败，尝试 url', { reason: error?.message ?? String(error) });
         }
-      } catch (error) {
-        logger?.warn?.('取图片失败', { reason: error?.message ?? String(error) });
+      }
+
+      // ② 消息里的 url
+      if (url) {
+        const downloaded = await this.downloadImage(url, maxBytes);
+        if (downloaded) return downloaded;
       }
       return null;
+    },
+
+    /** 直接下载一个图片地址（带超时与大小限制） */
+    async downloadImage(url, maxBytes = 1024 * 1024) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 8000);
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timer);
+        if (!res.ok) return null;
+        const buf = Buffer.from(await res.arrayBuffer());
+        if (buf.length === 0 || buf.length > maxBytes) return null;
+        const mime = buf[0] === 0x89 ? 'image/png' : buf[0] === 0xff ? 'image/jpeg' : buf.slice(0, 3).toString() === 'GIF' ? 'image/gif' : buf.slice(0, 4).toString() === 'RIFF' ? 'image/webp' : null;
+        return mime ? { buffer: buf, mimeType: mime, via: 'url' } : null;
+      } catch (error) {
+        logger?.warn?.('图片 url 下载失败', { reason: error?.message ?? String(error) });
+        return null;
+      }
     },
 
     async messageDetail(messageId) {

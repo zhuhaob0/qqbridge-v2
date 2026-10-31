@@ -100,7 +100,7 @@ export function createOrchestrator({
       for (const m of withImages.slice(-2)) {
         for (const med of m.media.filter((x) => x.type === 'image')) {
           if (!med.file) continue;
-          const img = await qq.getImage(med.file);
+          const img = await qq.getImage(med.file, { url: med.url });
           if (img?.buffer) images.push(img);
         }
       }
