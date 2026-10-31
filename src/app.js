@@ -29,8 +29,24 @@ export function createApp({
     config,
     logger,
     clock,
-    onMessage: (msg) => {
+    onMessage: (msg, ctx) => {
       bus?.emitMessage?.(msg);
+      // 记忆写入与「是否回复」无关：否则没被叫到的群聊内容永远不会进记忆，
+      // 私聊里自然也就问不出群聊发生过什么。
+      if (memory && msg.text) {
+        const shareScope = memory.shareScope ?? 'group';
+        const isGroup = msg.kind !== 'direct';
+        const sensitivity = shareScope === 'all' ? 'shared' : isGroup ? (shareScope === 'group' ? 'shared' : 'channel') : 'channel';
+        Promise.resolve(memory.ingest({
+          channel: {
+            id: ctx?.channelId,
+            kind: msg.kind,
+            participants: ctx?.participants ?? [],
+            recordPublic: config?.memory?.recordGroupChatter !== false,
+          },
+          events: [{ role: 'user', text: msg.text, at: msg.at, sensitivity }],
+        })).catch((error) => logger?.warn?.('记忆写入失败', { key: msg.sessionKey, reason: error?.message ?? String(error) }));
+      }
       const session = { wakeState: { mode: 'active' } };
       const decision = shouldWake({ msg, session, config, now: clock().getTime(), random });
       if (!decision.wake) {

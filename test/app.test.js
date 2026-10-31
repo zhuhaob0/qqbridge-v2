@@ -87,3 +87,60 @@ test('端到端：窗口内多条消息只触发一次回复', async () => {
   assert.equal(recent.length, 2, '两条入站都应入库');
   db.close();
 });
+
+test('入站即写记忆：群聊未被叫到也会写入（shared）', async () => {
+  const db = openDatabase(':memory:');
+  const qq = createFakeQq();
+  const calls = [];
+  const memory = {
+    shareScope: 'group',
+    async ingest(payload) { calls.push(payload); return { ok: true }; },
+  };
+  const cfg = config();
+  cfg.allow.groups = [];
+  cfg.allow.emptyGroupsMeansAll = true;
+  cfg.wake.triggers = { at: true, name: true, question: false, probability: 0 };
+  const app = createApp({
+    db, config: cfg, agent: createFakeAgent(), qq, memory,
+    logger: { debug() {}, info() {}, warn() {}, error() {} },
+    sleep: async () => {},
+  });
+
+  const groupEvent = event({
+    message_type: 'group',
+    group_id: 999,
+    user_id: 1,
+    message_id: 77,
+    message: [{ type: 'text', data: { text: '周末去爬山吗' } }],
+    sender: { user_id: 1, nickname: '小明' },
+  });
+  const result = app.router.handle(groupEvent);
+  assert.equal(result.accepted, true);
+  await new Promise((r) => setTimeout(r, 30));
+
+  assert.equal(calls.length, 1, '应写入一条记忆');
+  assert.equal(calls[0].events[0].text, '周末去爬山吗');
+  assert.equal(calls[0].events[0].sensitivity, 'shared', '群聊事件应标 shared');
+  assert.match(String(calls[0].channel.id), /group:/);
+  assert.equal(qq.sent.length, 0, '没被叫到不应回复');
+  db.close();
+});
+
+test('入站即写记忆：私聊标记 channel（不泄漏到群）', async () => {
+  const db = openDatabase(':memory:');
+  const calls = [];
+  const memory = {
+    shareScope: 'group',
+    async ingest(payload) { calls.push(payload); return { ok: true }; },
+  };
+  const app = createApp({
+    db, config: config(), agent: createFakeAgent(), qq: createFakeQq(), memory,
+    logger: { debug() {}, info() {}, warn() {}, error() {} },
+    sleep: async () => {},
+  });
+  app.router.handle(event());
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].events[0].sensitivity, 'channel');
+  db.close();
+});
