@@ -74,9 +74,12 @@ async function handle(message) {
       if (tools.length) saveCache(tools);
       return { jsonrpc: '2.0', id, result: { tools } };
     } catch (error) {
-      // 桥接还没起来时用上次的缓存，避免 DSH 启动期工具表为空/等待
+      // 桥接还没起来时用上次的缓存。
+      // 注意：JSON-RPC 规定 result 与 error 不能同时出现——之前两个都返回，
+      // 客户端（DSH）可能把它当成失败并重试，实测表现为启动多等 60 秒。
       const cached = loadCache();
-      return { jsonrpc: '2.0', id, result: { tools: cached }, error: { code: -32000, message: String(error?.message ?? error) } };
+      console.error('[qqbridge-mcp] tools/list 回退缓存: ' + String(error?.message ?? error));
+      return { jsonrpc: '2.0', id, result: { tools: cached } };
     }
   }
 
