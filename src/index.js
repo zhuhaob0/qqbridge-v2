@@ -19,6 +19,8 @@ import { createConsoleServer } from './console/server.js';
 import { createDryRunQq } from './qq/dry-run.js';
 import { createBus } from './router/bus.js';
 import { createToolRegistry } from './tools/index.js';
+import { createScheduler } from './scheduler/scheduler.js';
+import { createSpeech } from './speech/index.js';
 
 function parseArgs(argv) {
   const flags = { dryRun: false, console: true, config: './config.json' };
@@ -101,6 +103,32 @@ const app = createApp({
 
 transport?.start();
 
+const speech = createSpeech(config.speech ?? {});
+
+const scheduler = createScheduler({
+  logger,
+  jobs: [
+    {
+      name: 'consolidate',
+      at: config.memory?.consolidateAt ?? '04:30',
+      run: async () => (memory ? memory.consolidate() : null),
+    },
+    {
+      name: 'prune',
+      at: config.log?.pruneAt ?? '04:40',
+      run: async () => {
+        const now = Date.now();
+        const days = (n) => new Date(now - n * 86400000).toISOString();
+        const messages = q.pruneMessages(db, days(config.retain?.messagesDays ?? 90));
+        const dedupe = q.pruneDedupe(db, days(7));
+        const rates = q.pruneRateLimits(db, days(2).slice(0, 16));
+        return { messages, dedupe, rates };
+      },
+    },
+  ],
+});
+scheduler.start();
+
 let consoleServer = null;
 if (flags.console) {
   consoleServer = createConsoleServer({
@@ -126,6 +154,7 @@ logger.info('qqbridge-v2 已启动', {
   self: config.qq.selfQQ,
   dryRun: flags.dryRun,
   memory: Boolean(memory),
+  speech: speech.provider,
 });
 
 let shuttingDown = false;
@@ -134,6 +163,7 @@ async function shutdown(signal) {
   shuttingDown = true;
   logger.info('正在退出', { signal });
   try {
+    scheduler.stop();
     transport?.stop();
     await agent?.close?.();
     await consoleServer?.close?.();
