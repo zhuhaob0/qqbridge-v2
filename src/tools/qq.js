@@ -89,10 +89,14 @@ export function registerQqTools(registry) {
       required: ['key', 'token', 'messages'],
     },
     async run(ctx, args) {
-      const list = Array.isArray(args.messages) ? args.messages : [args.messages];
-      const results = [];
-      for (const text of list) results.push(await sendTo(ctx, ctx.sessionKey, text));
-      return { ok: true, sent: results.length, results };
+      // 多条合并成一条发：一次调用发两条在用户看来就是「刷屏」
+      const list = (Array.isArray(args.messages) ? args.messages : [args.messages])
+        .map((x) => String(x ?? '').trim())
+        .filter(Boolean);
+      const text = list.join(' ');
+      if (!text) return { ok: false, error: '消息为空' };
+      const result = await sendTo(ctx, ctx.sessionKey, text);
+      return { ok: true, sent: 1, text, result };
     },
   });
 
