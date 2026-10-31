@@ -71,6 +71,7 @@ const memory = config.memory?.enabled
     token: config.memory.token,
     tenant: config.memory.tenant,
     timeoutMs: config.memory.timeoutMs,
+    shareScope: config.memory.shareScope,
     logger,
   })
   : null;

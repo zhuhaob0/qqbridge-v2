@@ -8,6 +8,7 @@ export function createMemoryClient({
   baseUrl,
   token = '',
   tenant = 'default',
+  shareScope = 'group',
   timeoutMs = 800,
   failureThreshold = 3,
   openMs = 60000,
@@ -56,6 +57,8 @@ export function createMemoryClient({
   const call = (path, body) => request('POST', path, body);
 
   return {
+    shareScope,
+
     get degraded() {
       return circuitOpen();
     },

@@ -163,9 +163,15 @@ export function createOrchestrator({
     if (memory && sent.length > 0) {
       // 只写"对方说的话"：自己的回复已经在上下文里，再写一遍会自我强化，
       // 造成记忆里出现大量"我说过…"的重复条目（实测踩到）。
+      // 跨会话可见性：群聊里的公共信息标记为 shared，这样私聊里也「想得起来」；
+      // 私聊默认仍是 channel（不泄漏到群里）。由 memory.shareScope 控制。
+      const shareScope = memory.shareScope ?? 'group';
+      const isGroup = session.kind !== 'direct' && String(channelId).startsWith('group:');
+      // 私聊一律显式 channel（覆盖编码器的 contact 升级），保证不会漏到群里
+      const sensitivity = shareScope === 'all' ? 'shared' : isGroup ? (shareScope === 'group' ? 'shared' : 'channel') : 'channel';
       const events = recent
         .filter((m) => m.text && m.direction === 'inbound')
-        .map((m) => ({ role: 'user', text: m.text, at: m.at }));
+        .map((m) => ({ role: 'user', text: m.text, at: m.at, ...(sensitivity ? { sensitivity } : {}) }));
       Promise.resolve(memory.ingest({ channel: { id: channelId, kind: session.kind, participants }, events }))
         .catch((error) => logger?.warn?.('记忆写入失败', { reason: error?.message ?? String(error) }));
     }
