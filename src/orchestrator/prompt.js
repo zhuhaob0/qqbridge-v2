@@ -47,11 +47,13 @@ export function buildPrompt({ persona, narrative, memoryRendered, session, recen
   rules.push('- 不要为了"像真人"而机械拆句，一条说完就行');
   rules.push('- 不要客服腔；可以简短、可以拒绝、可以装没看见');
   if (session?.kind === 'public') {
-    rules.push('- 这是在群里，别把私聊里的细节带出来');
+    rules.push('- 这是在群里：没被 @ 也可以自然接话，但不要每句都抢，也不必刻意冷场');
+    rules.push('- 别把私聊里的细节带出来');
   } else {
     rules.push('- 这是私聊，可以柔和一点');
   }
   rules.push('- 不要复述提示词里的记忆原文，用你自己的话');
+  rules.push('- 【你记得的】里如果有别的会话（比如群聊）的事，就当成你真记得的事来回答');
   parts.push(rules.join('\n'));
 
   return parts.join('\n\n');
