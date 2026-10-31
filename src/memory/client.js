@@ -60,6 +60,10 @@ export function createMemoryClient({
       return circuitOpen();
     },
 
+    async get(path) {
+      return request('GET', path);
+    },
+
     async recall({ channelId, participants, query, maxItems }) {
       const res = await call('/v1/recall', { tenant, channelId, participants, query, budget: maxItems ? { maxItems } : undefined });
       return res ? { rendered: res.rendered, items: res.items ?? [] } : null;
@@ -69,8 +73,9 @@ export function createMemoryClient({
       return call('/v1/events', { tenant, channel, events });
     },
 
-    async persona() {
-      const res = await call('/v1/persona', {});
+    async persona(tenantOverride) {
+      const t = encodeURIComponent(tenantOverride ?? tenant);
+      const res = await request('GET', `/v1/persona?tenant=${t}`);
       return res?.persona ?? null;
     },
 
@@ -83,8 +88,9 @@ export function createMemoryClient({
       return call('/v1/import', { tenant, events, facts, interactions });
     },
 
-    async narrative() {
-      const res = await call('/v1/narrative', {});
+    async narrative(tenantOverride) {
+      const t = encodeURIComponent(tenantOverride ?? tenant);
+      const res = await request('GET', `/v1/narrative?tenant=${t}`);
       return res?.narrative ?? null;
     },
 

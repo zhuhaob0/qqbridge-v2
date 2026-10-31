@@ -105,10 +105,11 @@ export function createOrchestrator({
 
     // ⑤ 记忆写入（异步，失败不影响）
     if (memory && sent.length > 0) {
+      // 只写"对方说的话"：自己的回复已经在上下文里，再写一遍会自我强化，
+      // 造成记忆里出现大量"我说过…"的重复条目（实测踩到）。
       const events = recent
-        .filter((m) => m.text)
-        .map((m) => ({ role: m.direction === 'inbound' ? 'user' : 'assistant', text: m.text, at: m.at }));
-      events.push({ role: 'assistant', text: sent.join(''), at: clock().toISOString() });
+        .filter((m) => m.text && m.direction === 'inbound')
+        .map((m) => ({ role: 'user', text: m.text, at: m.at }));
       Promise.resolve(memory.ingest({ channel: { id: channelId, kind: session.kind, participants }, events }))
         .catch((error) => logger?.warn?.('记忆写入失败', { reason: error?.message ?? String(error) }));
     }
