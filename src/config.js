@@ -6,7 +6,8 @@ export const DEFAULTS = {
   qq: {
     ownerQQ: 0,
     selfQQ: 0,
-    snowluma: { url: 'ws://127.0.0.1:3001', token: '' },
+    snowluma: { url: 'ws://127.0.0.1:3001', token: '', homeDir: '' },
+    botNames: [],
   },
   allow: {
     private: [],
@@ -19,6 +20,7 @@ export const DEFAULTS = {
     token: '',
     tenant: 'default',
     timeoutMs: 800,
+    consolidateAt: '04:30',
   },
   agent: {
     kind: 'dsh',
@@ -36,15 +38,22 @@ export const DEFAULTS = {
     maxGapMs: 1800,
     maxPerMinute: 10,
     splitThreshold: 60,
+    imagesPerMinute: 2,
+    stickersPerMinute: 2,
+    voicesPerMinute: 2,
+    pokesPerMinute: 3,
   },
   console: { port: 3100, token: '' },
+  storagePath: '',
+  retain: { messagesDays: 90 },
   speech: {
     provider: 'none',
+    voicesDir: './audio',
     sensevoice: { model: '', threads: 2 },
     http: { url: '', apiKey: '', model: 'whisper-1' },
   },
   security: { sensitivePatterns: ['sk-', 'token', '密码'] },
-  log: { level: 'info', dir: './state/logs', keepDays: 7 },
+  log: { level: 'info', dir: './state/logs', keepDays: 7, pruneAt: '04:40' },
 };
 
 function isObject(v) {

@@ -59,9 +59,22 @@ export function createOrchestrator({
     // ③ agent
     let text = '';
     try {
-      const sessionId = session.agentSession ?? await agent.ensureSession(sessionKey, { preset: config?.agent?.preset });
-      if (!session.agentSession) q.setAgentSession(db, sessionKey, sessionId);
-      text = await collectText(agent.send(sessionId, prompt));
+      // 迁移过来的 DSH 会话可能已失效：失败时清掉再建一次
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const sessionId = session.agentSession ?? await agent.ensureSession(sessionKey, { preset: config?.agent?.preset });
+        if (!session.agentSession) q.setAgentSession(db, sessionKey, sessionId);
+        try {
+          text = await collectText(agent.send(sessionId, prompt));
+          break;
+        } catch (error) {
+          const reason = String(error?.message ?? error);
+          const staleSession = /session|not.?found|不存在|404|invalid|unknown/i.test(reason);
+          if (attempt === 1 || !staleSession) throw error;
+          logger?.warn?.('agent 会话可能失效，重建后重试', { key: sessionKey, reason });
+          q.setAgentSession(db, sessionKey, null);
+          session.agentSession = null;
+        }
+      }
     } catch (error) {
       logger?.error?.('agent 调用失败', { key: sessionKey, reason: error?.message ?? String(error) });
       return { ok: false, reason: 'agent 调用失败', error: String(error?.message ?? error) };
