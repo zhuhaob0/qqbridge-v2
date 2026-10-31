@@ -4,6 +4,7 @@
 
 import http from 'node:http';
 import { CONSOLE_PAGE } from './page.js';
+import { markToolSend, SEND_TOOLS } from '../tools/stats.js';
 
 function sendJson(res, status, payload) {
   const body = JSON.stringify(payload);
@@ -67,6 +68,7 @@ export function createConsoleServer({
       try {
         const body = await readBody(req);
         const result = await registry.call(body.name, body.arguments ?? {}, toolCtx ?? { db, config, qq: transport, memory, logger });
+        if (SEND_TOOLS.has(body.name) && body.arguments?.key) markToolSend(body.arguments.key);
         sendJson(res, 200, { ok: true, result });
       } catch (error) {
         sendJson(res, 400, { ok: false, error: error?.message ?? String(error), code: error?.code ?? 'error' });

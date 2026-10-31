@@ -11,14 +11,30 @@
  */
 
 import readline from 'node:readline';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+
+const CACHE_FILE = process.env.QQB_TOOLS_CACHE ?? path.join(os.tmpdir(), 'qqbridge-tools-cache.json');
+
+function saveCache(tools) {
+  try { fs.writeFileSync(CACHE_FILE, JSON.stringify({ at: new Date().toISOString(), tools }), 'utf8'); } catch { /* 忽略 */ }
+}
+
+function loadCache() {
+  try { return JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8')).tools ?? []; } catch { return []; }
+}
 
 const PROTOCOL_VERSION = '2024-11-05';
 const BRIDGE = (process.env.QQB_BRIDGE ?? 'http://127.0.0.1:3100').replace(/\/+$/, '');
 const TOKEN = process.env.QQB_TOKEN ?? '';
 
 async function api(path, options = {}) {
+  // 桥接可能还没起来（DSH 启动早期）：必须快速失败，否则 DSH 会等 tools/list 到超时，
+  // 表现为「进程和托盘都在，但窗口半天不出来」。
   const res = await fetch(`${BRIDGE}${path}`, {
     ...options,
+    signal: AbortSignal.timeout(3000),
     headers: {
       'content-type': 'application/json',
       ...(TOKEN ? { authorization: `Bearer ${TOKEN}` } : {}),
@@ -54,9 +70,13 @@ async function handle(message) {
   if (method === 'tools/list') {
     try {
       const body = await api('/tools/list');
-      return { jsonrpc: '2.0', id, result: { tools: body.tools ?? [] } };
+      const tools = body.tools ?? [];
+      if (tools.length) saveCache(tools);
+      return { jsonrpc: '2.0', id, result: { tools } };
     } catch (error) {
-      return { jsonrpc: '2.0', id, result: { tools: [] }, error: { code: -32000, message: String(error?.message ?? error) } };
+      // 桥接还没起来时用上次的缓存，避免 DSH 启动期工具表为空/等待
+      const cached = loadCache();
+      return { jsonrpc: '2.0', id, result: { tools: cached }, error: { code: -32000, message: String(error?.message ?? error) } };
     }
   }
 

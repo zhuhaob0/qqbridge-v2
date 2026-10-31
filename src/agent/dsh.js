@@ -68,13 +68,16 @@ export function createDshAgent({
     pumpRunning = true;
     const controller = new AbortController();
     pumpStop = () => controller.abort();
+    let frames = 0;
     try {
       for await (const envelope of api.events.mux({}, controller.signal)) {
+        frames += 1;
         dispatch(envelope?.payload ?? envelope);
       }
+      logger?.info?.('DSH 事件流自然结束', { frames });
     } catch (error) {
       if (!controller.signal.aborted) {
-        logger?.warn?.('DSH 事件流中断', { reason: error?.message ?? String(error) });
+        logger?.warn?.('DSH 事件流中断', { reason: error?.message ?? String(error), frames });
       }
     } finally {
       pumpRunning = false;

@@ -7,6 +7,7 @@ import { buildPrompt, replyPolicy } from './prompt.js';
 import { split } from './splitter.js';
 import * as q from '../storage/queries.js';
 import { channelIdFor, participantsFor } from '../router/session.js';
+import { takeToolSend } from '../tools/stats.js';
 
 const defaultSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -23,7 +24,22 @@ export function createOrchestrator({
 } = {}) {
   const policy = replyPolicy(null, config);
 
-  async function run(sessionKey, { items = [] } = {}) {
+  // 同一会话串行：上一轮没结束又来消息时排队，避免两个回合并发跑同一 session
+  const chains = new Map();
+
+  async function runSerial(sessionKey, options) {
+    const prev = chains.get(sessionKey) ?? Promise.resolve();
+    const next = prev.then(() => runOnce(sessionKey, options)).catch((error) => {
+      logger?.error?.('编排失败', { key: sessionKey, reason: error?.message ?? String(error) });
+      return { ok: false, reason: '编排异常' };
+    });
+    chains.set(sessionKey, next.finally(() => {
+      if (chains.get(sessionKey) === next) chains.delete(sessionKey);
+    }));
+    return next;
+  }
+
+  async function runOnce(sessionKey, { items = [] } = {}) {
     const started = clock().getTime();
     const session = q.getSession(db, sessionKey);
     if (session && !session.agentToken) session.agentToken = q.ensureAgentToken(db, sessionKey);
@@ -82,10 +98,13 @@ export function createOrchestrator({
     }
 
     // ④ 分条 + 发送（受每分钟限流约束）
-    const parts = split(text, {
+    // 如果 AI 这一轮已经用发送工具发过消息，就别再自动转发了（否则一次回复变两条）
+    const toolSent = takeToolSend(sessionKey);
+    const parts = toolSent > 0 ? [] : split(text, {
       threshold: policy.splitThreshold,
       maxParts: policy.maxParts,
     });
+    if (toolSent > 0) logger?.info?.('本轮已由工具发送，跳过自动转发', { key: sessionKey, toolSent });
     const sent = [];
     for (const part of parts) {
       const rate = q.consumeRate(db, {
@@ -133,5 +152,5 @@ export function createOrchestrator({
     return { ok: true, parts: sent, prompt, elapsedMs };
   }
 
-  return { run };
+  return { run: runSerial, runSerial, runOnce };
 }
