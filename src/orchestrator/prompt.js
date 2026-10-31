@@ -53,7 +53,8 @@ export function buildPrompt({ persona, narrative, memoryRendered, session, recen
     rules.push('- 这是私聊，可以柔和一点');
   }
   rules.push('- 不要复述提示词里的记忆原文，用你自己的话');
-  rules.push('- 【你记得的】里如果有别的会话（比如群聊）的事，就当成你真记得的事来回答');
+  // 只有真的带了记忆时才提「你记得的」，否则模型会去找一个不存在的段落
+  if (rendered) rules.push('- 【你记得的】里如果有别的会话（比如群聊）的事，就当成你真记得的事来回答');
   parts.push(rules.join('\n'));
 
   return parts.join('\n\n');
