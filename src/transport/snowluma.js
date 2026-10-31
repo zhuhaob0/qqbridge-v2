@@ -8,6 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseSessionKey } from '../router/session.js';
+import { resolveWsToken } from './snowluma-token.js';
 
 const fallbackBuilders = {
   text: (s) => String(s),
@@ -50,10 +51,30 @@ export function createSnowLumaTransport({
   return {
     client,
 
+    /** 供 /health 观察连接状态 */
+    get connected() {
+      return client?.isConnected === true;
+    },
+
     start() {
       if (started) return;
       started = true;
-      client.connect?.();
+      const tryConnect = () => {
+        try {
+          const pending = client.connect?.();
+          if (pending && typeof pending.catch === 'function') {
+            pending.catch((error) => {
+              if (!started) return;
+              logger?.warn?.('SnowLuma 连接失败，5 秒后重试', { reason: error?.message ?? String(error) });
+              setTimeout(() => { if (started) tryConnect(); }, 5000);
+            });
+          }
+        } catch (error) {
+          logger?.warn?.('SnowLuma 连接抛错，5 秒后重试', { reason: error?.message ?? String(error) });
+          setTimeout(() => { if (started) tryConnect(); }, 5000);
+        }
+      };
+      tryConnect();
       logger?.info?.('SnowLuma 传输层启动');
     },
 
@@ -174,9 +195,17 @@ export function createSnowLumaTransport({
 /** 从配置创建真实传输层（动态 import，测试环境无需安装 SDK） */
 export async function createSnowLumaTransportFromConfig(config, { logger = null, onRaw } = {}) {
   const sdk = await import('@snowluma/sdk');
+  const resolved = resolveWsToken({
+    homeDir: config?.qq?.snowluma?.homeDir ?? process.env.SNOWLUMA_HOME ?? '',
+    selfQQ: config?.qq?.selfQQ,
+    configured: config?.qq?.snowluma?.token ?? '',
+    logger,
+  });
+  if (resolved.source === 'ws-config') logger?.info?.('已从 SnowLuma 配置解析到 WS token', { file: resolved.file });
+  else if (resolved.source === 'none') logger?.warn?.('没有可用的 WS token，连接大概率失败');
   const client = new sdk.SnowLumaWebSocketClient({
     url: config?.qq?.snowluma?.url,
-    accessToken: config?.qq?.snowluma?.token || undefined,
+    accessToken: resolved.token || undefined,
     reconnect: true,
   });
   return createSnowLumaTransport({
