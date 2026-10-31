@@ -3,3 +3,9 @@ state/
 sessions/
 *.log
 .env
+.env.*
+config.json
+config.local.json
+*.bak
+*.bak-*
+data/

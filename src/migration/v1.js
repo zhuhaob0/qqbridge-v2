@@ -169,9 +169,12 @@ export async function migrateV1({ v1Dir, db, memory = null, dryRun = false, logg
     }
     for (const [name, value] of Object.entries(conv.memberImpressions ?? {})) {
       const uin = nameToUin.get(name);
+      // v1 的 impression 可能是字符串，也可能是 { traits: [...], interactionCount, lastSeenAt }
       const text = typeof value === 'string'
         ? value
-        : String(value?.text ?? value?.note ?? value?.impression ?? JSON.stringify(value));
+        : Array.isArray(value?.traits)
+          ? value.traits.join('；')
+          : String(value?.text ?? value?.note ?? value?.impression ?? JSON.stringify(value));
       memoryFacts.push({
         text: `${name}：${text}`,
         participants: [uin ? `user:${uin}` : `node:${name}`],
