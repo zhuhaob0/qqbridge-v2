@@ -97,7 +97,25 @@ interface MemoryPort {
 
 **降级语义**：所有方法超时（默认 800ms）返回 null，编排层按"没有记忆"继续，**不阻塞回复**。
 
-### 3.3 QqPort —— 与 OneBot 的边界
+### 3.3 SpeechPort —— 语音识别（可插拔）
+
+`js
+interface SpeechPort {
+  transcribe({ audio, format = 'wav', sampleRate = 16000 }): Promise<{ text, confidence } | null>
+}
+`
+
+| provider | 说明 | 何时用 |
+|---|---|---|
+| sensevoice（默认） | 本地 sherpa-onnx + SenseVoice int8 | 离线、快、中文强 |
+| whisper | faster-whisper / whisper.cpp | 需要更高准确率（噪声、方言、多语种） |
+| http | OpenAI 兼容转写接口 | 不想本地跑模型 |
+| 
+one | 关闭 | 不需要语音 |
+
+选择由配置决定，接口不变——这是"便于其他人改造"的关键：换识别引擎不改业务代码。
+
+### 3.4 QqPort —— 与 OneBot 的边界
 
 ```js
 interface QqPort {
@@ -236,6 +254,7 @@ kv           杂项（锁、令牌、上次巩固时间、版本）
 ```
 
 - 三个进程都可以独立重启；
+- **v1 与 v2 不并存**：SnowLuma 单客户端约束下，切换 = 停 v1 / 起 v2（详见 [04-MIGRATION.md](04-MIGRATION.md)）；
 - 桥接对 mnema / DSH 都是**客户端**，任何一方挂掉不影响消息收发（只影响智能回复）；
 - 控制台跑在桥接进程内（`127.0.0.1:3100`）。
 

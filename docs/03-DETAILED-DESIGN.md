@@ -27,6 +27,11 @@ qqbridge-v2/
 │   │   ├── run.js               一轮对话编排
 │   │   ├── prompt.js            提示词组装（纯函数，可单测）
 │   │   └── splitter.js          文本分条（纯函数）
+│   ├── speech/
+│   │   ├── index.js        SpeechPort 工厂（按配置选 provider）
+│   │   ├── sensevoice.js   本地 sherpa-onnx 实现（默认）
+│   │   ├── whisper.js      faster-whisper / whisper.cpp
+│   │   └── http.js         OpenAI 兼容转写接口
 │   ├── memory/
 │   │   ├── client.js            mnema HTTP 客户端（超时/熔断/降级）
 │   │   └── defaults.js          无记忆时的兜底文本
@@ -88,7 +93,7 @@ qqbridge-v2/
     "timeoutMs": 800,
     "enabled": true
   },
-  "agent": {
+  "speech": {`r`n    "provider": "sensevoice",          // sensevoice | whisper | http | none`r`n    "sensevoice": { "model": "models/sherpa-onnx-sense-voice-*-int8", "threads": 2 },`r`n    "http": { "url": "", "apiKey": "", "model": "whisper-1" }`r`n  },`r`n  "agent": {
     "kind": "dsh",
     "baseUrl": "http://127.0.0.1:xxxx",
     "preset": "qq-chat-v2",
@@ -414,6 +419,34 @@ async function consume(action, target, { perMinute, perDay }) {
 
 ---
 
-## 11. 待确认（与需求文档合并）
+## 11. 语音识别（SpeechPort）
+
+`js
+// speech/index.js
+export function createSpeech(config) {
+  switch (config.provider) {
+    case 'none': return { transcribe: async () => null };
+    case 'whisper': return createWhisper(config.whisper);
+    case 'http': return createHttp(config.http);
+    case 'sensevoice':
+    default: return createSenseVoice(config.sensevoice);
+  }
+}
+`
+
+**默认 provider 为 sensevoice**（本地 sherpa-onnx + SenseVoice int8，离线、中文强、约 200MB）。
+想换更准的：aster-whisper（CPU 上慢 3~5 倍）；不想本地跑：http 指向任意 OpenAI 兼容接口。
+
+**约定**：
+
+- 输入统一转 16k 单声道 wav（fmpeg 转换，失败则跳过）
+- 输出 { text, confidence } 或 
+ull（跳过）
+- 超时 20s，失败不影响文字消息处理
+- 识别结果标记为 [语音] 转写：… 拼进提示词，保留原始 ecord 段
+
+**可扩展**：新增 provider 只需实现 	ranscribe() 并在工厂里加一个 case。
+
+## 12. 待确认（与需求文档合并）
 
 见 [01-REQUIREMENTS.md](01-REQUIREMENTS.md) 第 9 节，以及 [02-ARCHITECTURE.md](02-ARCHITECTURE.md) 第 10 节。
