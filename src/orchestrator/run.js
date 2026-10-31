@@ -26,6 +26,7 @@ export function createOrchestrator({
   async function run(sessionKey, { items = [] } = {}) {
     const started = clock().getTime();
     const session = q.getSession(db, sessionKey);
+    if (session && !session.agentToken) session.agentToken = q.ensureAgentToken(db, sessionKey);
     if (!session) {
       logger?.warn?.('会话不存在，跳过', { key: sessionKey });
       return { ok: false, reason: '会话不存在' };

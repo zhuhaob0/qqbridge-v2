@@ -17,6 +17,8 @@ import { createMemoryClient } from './memory/client.js';
 import { createApp } from './app.js';
 import { createConsoleServer } from './console/server.js';
 import { createDryRunQq } from './qq/dry-run.js';
+import { createBus } from './router/bus.js';
+import { createToolRegistry } from './tools/index.js';
 
 function parseArgs(argv) {
   const flags = { dryRun: false, console: true, config: './config.json' };
@@ -84,6 +86,9 @@ if (!qq) {
   transport = await createSnowLumaTransportFromConfig(config, { logger, onRaw: (raw) => app.router.handle(raw) });
 }
 
+const bus = createBus();
+const registry = createToolRegistry();
+
 const app = createApp({
   db,
   config,
@@ -91,6 +96,7 @@ const app = createApp({
   qq: qq ?? transport,
   memory,
   logger,
+  bus,
 });
 
 transport?.start();
@@ -103,6 +109,8 @@ if (flags.console) {
     transport,
     memory,
     logger,
+    registry,
+    toolCtx: { db, config, qq: qq ?? transport, memory, bus, logger },
     stats: () => ({
       messages: Number(db.prepare('SELECT COUNT(*) AS n FROM messages').get()?.n ?? 0),
       sessions: Number(db.prepare('SELECT COUNT(*) AS n FROM sessions').get()?.n ?? 0),

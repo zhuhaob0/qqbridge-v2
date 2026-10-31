@@ -19,12 +19,19 @@ function authorized(req, url, token) {
 }
 
 export function createConsoleServer({
-  db, config, transport = null, memory = null, logger = null,
+  db, config, transport = null, memory = null, logger = null, registry = null, toolCtx = null,
   stats = () => ({}), getSessions = null, token = config?.console?.token ?? '', port = config?.console?.port ?? 3100,
 } = {}) {
   const startedAt = Date.now();
 
-  const server = http.createServer((req, res) => {
+  async function readBody(req) {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const text = Buffer.concat(chunks).toString('utf8').trim();
+    return text ? JSON.parse(text) : {};
+  }
+
+  const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const path = url.pathname.replace(/\/+$/, '') || '/';
 
@@ -47,6 +54,23 @@ export function createConsoleServer({
         memory: memory ? { degraded: Boolean(memory.degraded) } : { enabled: false },
         transport: transport ? { connected: Boolean(transport.connected) } : { connected: false },
       });
+      return;
+    }
+
+    if (path === '/tools/list' && req.method === 'GET') {
+      sendJson(res, 200, { ok: true, tools: registry ? registry.list().map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema, scope: t.scope })) : [] });
+      return;
+    }
+
+    if (path === '/tools/call' && req.method === 'POST') {
+      if (!registry) { sendJson(res, 503, { ok: false, error: '工具未装配' }); return; }
+      try {
+        const body = await readBody(req);
+        const result = await registry.call(body.name, body.arguments ?? {}, toolCtx ?? { db, config, qq: transport, memory, logger });
+        sendJson(res, 200, { ok: true, result });
+      } catch (error) {
+        sendJson(res, 400, { ok: false, error: error?.message ?? String(error), code: error?.code ?? 'error' });
+      }
       return;
     }
 

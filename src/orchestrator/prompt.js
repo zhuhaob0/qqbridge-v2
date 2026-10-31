@@ -24,6 +24,11 @@ export function buildPrompt({ persona, narrative, memoryRendered, session, recen
   const rendered = String(memoryRendered ?? '').trim();
   if (rendered) parts.push(rendered);
 
+  // 会话标识：工具调用要靠它做鉴权
+  if (session?.agentToken) {
+    parts.push(`【会话标识】\nkey=${session.sessionKey}\ntoken=${session.agentToken}`);
+  }
+
   // 本轮对话
   const lines = ['【本轮对话】'];
   for (const m of recent) {

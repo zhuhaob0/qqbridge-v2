@@ -2,6 +2,8 @@
  * 查询：所有 SQL 只出现在这里
  */
 
+import crypto from 'node:crypto';
+
 const parseJson = (v, fallback) => {
   if (!v) return fallback;
   try {
@@ -141,4 +143,45 @@ export function setKv(db, key, value) {
 
 export function pruneMessages(db, beforeIso) {
   return Number(db.prepare('DELETE FROM messages WHERE at < ?').run(beforeIso).changes ?? 0);
+}
+
+// ── 未读 / 已读 ───────────────────────────────────────────
+export function unreadMessages(db, sessionKey, sinceIso, limit = 30) {
+  const since = sinceIso ?? '1970-01-01T00:00:00.000Z';
+  return db
+    .prepare(`SELECT * FROM messages
+      WHERE session_key = ? AND direction = 'inbound' AND at > ?
+      ORDER BY at ASC LIMIT ?`)
+    .all(sessionKey, since, limit)
+    .map((r) => ({
+      msgId: r.msg_id, sessionKey: r.session_key, direction: r.direction,
+      senderId: r.sender_id, senderName: r.sender_name, text: r.text,
+      hasMedia: Boolean(r.has_media), media: parseJson(r.media, null), at: r.at,
+    }));
+}
+
+export function latestInbound(db, sessionKey) {
+  const r = db
+    .prepare("SELECT * FROM messages WHERE session_key = ? AND direction = 'inbound' ORDER BY at DESC LIMIT 1")
+    .get(sessionKey);
+  if (!r) return null;
+  return { msgId: r.msg_id, sessionKey: r.session_key, senderId: r.sender_id, senderName: r.sender_name, text: r.text, at: r.at };
+}
+
+export function setReadThrough(db, sessionKey, atIso) {
+  const session = getSession(db, sessionKey);
+  if (!session) return null;
+  const wakeState = { ...session.wakeState, readThroughAt: atIso };
+  setWakeState(db, sessionKey, wakeState);
+  return wakeState;
+}
+
+/** 确保会话有令牌（首次调用时生成） */
+export function ensureAgentToken(db, sessionKey) {
+  const session = getSession(db, sessionKey);
+  if (!session) return null;
+  if (session.agentToken) return session.agentToken;
+  const token = crypto.randomBytes(24).toString('hex');
+  db.prepare('UPDATE sessions SET agent_token = ? WHERE session_key = ?').run(token, sessionKey);
+  return token;
 }

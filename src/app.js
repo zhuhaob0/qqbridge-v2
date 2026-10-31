@@ -9,7 +9,7 @@ import { createBatcher } from './wake/batcher.js';
 import { createOrchestrator } from './orchestrator/run.js';
 
 export function createApp({
-  db, config, agent, qq, memory = null, logger = null, clock = () => new Date(), random = Math.random, sleep,
+  db, config, agent, qq, memory = null, logger = null, clock = () => new Date(), random = Math.random, sleep, bus = null,
 } = {}) {
   const orchestrator = createOrchestrator({ db, config, agent, qq, memory, logger, clock, random, sleep });
 
@@ -30,6 +30,7 @@ export function createApp({
     logger,
     clock,
     onMessage: (msg) => {
+      bus?.emitMessage?.(msg);
       const session = { wakeState: { mode: 'active' } };
       const decision = shouldWake({ msg, session, config, now: clock().getTime(), random });
       if (!decision.wake) {
