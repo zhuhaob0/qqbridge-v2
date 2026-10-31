@@ -31,6 +31,11 @@ export function shouldWake({ msg, session, config, now = Date.now(), random = Ma
   const botNames = config?.qq?.botNames ?? [];
   const text = msg?.text ?? '';
 
+  // 私聊一定是发给 AI 的：不管什么句式都要醒（可用 wake.privateAlways=false 关掉）
+  const isPrivate = msg?.kind !== 'public';
+  if (isPrivate && config?.wake?.privateAlways !== false) {
+    return { wake: true, reason: '私聊必醒' };
+  }
   const diving = inDiving(session?.wakeState, now);
 
   if (mentionsBot(text, { selfQQ, botNames })) {

@@ -9,7 +9,8 @@ const config = (over = {}) => ({
   ...over,
 });
 
-const msg = (text) => ({ text, direction: 'inbound' });
+// 默认当作群聊消息（private 现在是「必醒」，见 policy）
+const msg = (text, kind = 'public') => ({ text, direction: 'inbound', kind });
 
 test('活跃模式：任何消息都唤醒', () => {
   const r = shouldWake({ msg: msg('随便说点什么'), session: { wakeState: {} }, config: config() });
@@ -87,7 +88,8 @@ test('潜水到期后自动恢复活跃', () => {
 test('概率唤醒', () => {
   const r = shouldWake({
     msg: msg('随便'),
-    session: { wakeState: { mode: 'diving', triggers: { probability: 0.5 } } },
+    // 群聊的概率唤醒由 probabilityGroup 控制（probability 只管一对一）
+    session: { wakeState: { mode: 'diving', triggers: { probabilityGroup: 0.5 } } },
     config: config(),
     random: () => 0.1,
   });
