@@ -80,6 +80,14 @@ export function createOrchestrator({
       config,
     });
 
+    logger?.info?.('prompt 预览', {
+      key: sessionKey,
+      promptLen: prompt.length,
+      memoryLen: String(memoryData?.rendered ?? '').length,
+      sharedRecent: String(memoryData?.rendered ?? '').includes('来自其它会话') ? 'yes' : 'no',
+      recentCount: recent.length,
+    });
+
     // ②.5 收集本轮要「看」的图片（最近一条带图的消息，最多 2 张）
     const images = [];
     if (typeof qq.getImage === 'function') {

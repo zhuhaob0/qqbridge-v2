@@ -7,6 +7,7 @@ import { createRouter } from './router/router.js';
 import { shouldWake } from './wake/policy.js';
 import { createBatcher } from './wake/batcher.js';
 import { createOrchestrator } from './orchestrator/run.js';
+import * as q from './storage/queries.js';
 
 export function createApp({
   db, config, agent, qq, memory = null, logger = null, clock = () => new Date(), random = Math.random, sleep, bus = null,
@@ -47,7 +48,10 @@ export function createApp({
           events: [{ role: 'user', text: msg.text, at: msg.at, sensitivity }],
         })).catch((error) => logger?.warn?.('记忆写入失败', { key: msg.sessionKey, reason: error?.message ?? String(error) }));
       }
-      const session = { wakeState: { mode: 'active' } };
+      // 用库里真实的会话状态：群聊默认活跃（有人说话就接），私聊也默认活跃；
+      // 潜水（diving）只认 @/点名/提问
+      const dbSession = q.getSession(db, msg.sessionKey);
+      const session = dbSession ?? { wakeState: { mode: 'active' } };
       const decision = shouldWake({ msg, session, config, now: clock().getTime(), random });
       if (!decision.wake) {
         logger?.debug?.('不唤醒', { key: msg.sessionKey, reason: decision.reason });
