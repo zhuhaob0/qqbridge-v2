@@ -5,6 +5,7 @@
  * 协议细节留在 vendor/dsh-client.js（见 vendor/README.md）。
  */
 
+import path from 'node:path';
 import { createTurnCollector } from './collector.js';
 
 /**
@@ -21,6 +22,7 @@ export function createDshAgent({
   preset = null,
   logger = null,
   turnTimeoutMs = 180000,
+  resolveBase = null,
 } = {}) {
   const waiters = new Map(); // sessionId -> { collector, resolve, reject, timer }
   const sessionByKey = new Map();
@@ -111,8 +113,20 @@ export function createDshAgent({
     yield { type: 'done' };
   }
 
+  /** DSH 换了端口：重新解析并切过去（调用方在 fetch failed 时调用） */
+  function refreshBase() {
+    if (typeof resolveBase !== 'function') return null;
+    const next = resolveBase();
+    if (!next?.baseUrl || next.baseUrl === api.baseUrl) return null;
+    logger?.warn?.('DSH 端口变化，切换 baseUrl', { from: api.baseUrl, to: next.baseUrl, source: next.source });
+    api.baseUrl = next.baseUrl;
+    try { api.invalidateAuth?.(); } catch { /* 忽略 */ }
+    return next.baseUrl;
+  }
+
   return {
     api,
+    refreshBase,
     ensureSession,
     send,
     startPump: pump,
@@ -131,7 +145,11 @@ export function createDshAgent({
 /** 从配置创建（动态 import，避免测试环境强制安装依赖） */
 export async function createDshAgentFromConfig(config, { logger = null } = {}) {
   const { NodeApiClient } = await import('../../vendor/dsh-client.js');
-  const api = new NodeApiClient(config?.agent?.baseUrl ?? '', undefined, {
+  const { resolveDshBase } = await import('./dsh-port.js');
+  const dir = config?.agent?.sessionCwd ? path.resolve(config.agent.sessionCwd, '..') : process.cwd();
+  const resolved = resolveDshBase({ dir, fallback: config?.agent?.baseUrl ?? '' });
+  if (resolved.source !== 'env') logger?.info?.('DSH baseUrl 解析', { baseUrl: resolved.baseUrl, source: resolved.source });
+  const api = new NodeApiClient(resolved.baseUrl || config?.agent?.baseUrl || '', undefined, {
     token: config?.agent?.authToken ?? '',
     header: config?.agent?.authHeader,
     prefix: config?.agent?.authPrefix,
@@ -142,5 +160,6 @@ export async function createDshAgentFromConfig(config, { logger = null } = {}) {
     workspacePath: config?.agent?.sessionCwd ?? null,
     preset: config?.agent?.preset ?? null,
     logger,
+    resolveBase: () => resolveDshBase({ dir, fallback: config?.agent?.baseUrl ?? '' }),
   });
 }

@@ -85,9 +85,10 @@ export function createOrchestrator({
         } catch (error) {
           const reason = String(error?.message ?? error);
           // 超时也按「会话可能失效」处理：DSH 重启后旧 sessionId 收不到 turn 事件
-          const staleSession = /session|not.?found|不存在|404|invalid|unknown|超时|timeout/i.test(reason);
+          const staleSession = /session|not.?found|不存在|404|invalid|unknown|超时|timeout|fetch failed|ECONNREFUSED|ECONNRESET/i.test(reason);
           if (attempt === 1 || !staleSession) throw error;
-          logger?.warn?.('agent 会话可能失效，重建后重试', { key: sessionKey, reason });
+          logger?.warn?.('agent 调用失败，重建会话/刷新端口后重试', { key: sessionKey, reason });
+          agent.refreshBase?.();
           q.setAgentSession(db, sessionKey, null);
           session.agentSession = null;
         }
