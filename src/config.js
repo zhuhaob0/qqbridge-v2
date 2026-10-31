@@ -46,6 +46,11 @@ export const DEFAULTS = {
   console: { port: 3100, token: '' },
   storagePath: '',
   retain: { messagesDays: 90 },
+  media: {
+    // 收图缓存（state/media）保留天数；每天 prune-media 清理过期文件
+    retainDays: 30,
+    pruneAt: '04:50',
+  },
   speech: {
     provider: 'none',
     voicesDir: './audio',

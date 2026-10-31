@@ -20,6 +20,7 @@ import { createDryRunQq } from './qq/dry-run.js';
 import { createBus } from './router/bus.js';
 import { createToolRegistry } from './tools/index.js';
 import { createScheduler } from './scheduler/scheduler.js';
+import { pruneMedia } from './storage/media.js';
 import { createSpeech } from './speech/index.js';
 
 function parseArgs(argv) {
@@ -117,6 +118,11 @@ const scheduler = createScheduler({
       name: 'consolidate',
       at: config.memory?.consolidateAt ?? '04:30',
       run: async () => (memory ? memory.consolidate() : null),
+    },
+    {
+      name: 'prune-media',
+      at: config.media?.pruneAt ?? '04:50',
+      run: async () => pruneMedia({ days: config.media?.retainDays ?? 30 }),
     },
     {
       name: 'prune',
