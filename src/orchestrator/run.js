@@ -49,6 +49,14 @@ export function createOrchestrator({
     }
 
     const recent = q.recentMessages(db, sessionKey, 20);
+
+    // 没有未读就不该开回合：概率唤醒/定时唤醒会把「没有新消息」也当成一轮，
+    // 模型拿不到内容就只能解释自己的状态（实测在群里发过这种废话）。
+    const unread = q.unreadMessages(db, sessionKey, session.wakeState?.readThroughAt ?? undefined);
+    if (unread.length === 0) {
+      logger?.info?.('没有新的入站消息，跳过本轮', { key: sessionKey });
+      return { ok: true, parts: [], skipped: 'no-unread' };
+    }
     const channelId = channelIdFor(sessionKey);
     const participants = participantsFor(sessionKey, { selfId: 'self' });
 
@@ -155,9 +163,17 @@ export function createOrchestrator({
         text: part,
         at: clock().toISOString(),
       });
+      if (memory && session.kind === 'public' && part) {
+        Promise.resolve(memory.ingest({
+          channel: { id: channelId, kind: 'public', participants, recordPublic: true },
+          events: [{ role: 'assistant', text: part, at: clock().toISOString(), sensitivity: 'shared' }],
+        })).catch((error) => logger?.warn?.('记忆写入失败（群聊回复）', { reason: error?.message ?? String(error) }));
+      }
       const gap = policy.minGapMs + Math.floor(random() * Math.max(1, policy.maxGapMs - policy.minGapMs));
       await sleep(gap);
     }
+
+    if (sent.length > 0 || toolSent > 0) q.setReadThrough(db, sessionKey, clock().toISOString());
 
     const elapsedMs = clock().getTime() - started;
     logger?.info?.('一轮对话完成', { key: sessionKey, parts: sent.length, elapsedMs });

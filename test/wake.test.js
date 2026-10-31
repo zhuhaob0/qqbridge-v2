@@ -103,3 +103,14 @@ test('辅助函数', () => {
   assert.equal(isQuestion('你好吗'), true);
   assert.equal(isQuestion('我去吃饭了'), false);
 });
+
+test('群聊不做概率唤醒（潜水时也一样）', () => {
+  const cfg = config({ wake: { triggers: { at: true, name: true, question: false, probability: 0.99 } } });
+  const groupMsg = { text: '今天天气不错', direction: 'inbound', kind: 'public' };
+  const r = shouldWake({ msg: groupMsg, session: { wakeState: { mode: 'diving' } }, config: cfg, random: () => 0.01 });
+  assert.equal(r.wake, false, '群聊不应因概率而插话');
+  // 一对一仍然允许
+  const privateMsg = { text: '今天天气不错', direction: 'inbound', kind: 'direct' };
+  const r2 = shouldWake({ msg: privateMsg, session: { wakeState: { mode: 'diving' } }, config: cfg, random: () => 0.01 });
+  assert.equal(r2.wake, true);
+});

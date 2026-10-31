@@ -43,7 +43,11 @@ export function shouldWake({ msg, session, config, now = Date.now(), random = Ma
     const keywords = triggers.keywords ?? [];
     const hit = keywords.find((k) => k && text.includes(k));
     if (hit) return { wake: true, reason: `命中关键词:${hit}` };
-    if (typeof triggers.probability === 'number' && random() < triggers.probability) {
+    // 概率唤醒只在一对一里用：群聊里随机插话非常像刷屏（实测莫名发过两条）
+    const probability = msg?.kind === 'public'
+      ? Number(triggers.probabilityGroup ?? 0)
+      : Number(triggers.probability ?? 0);
+    if (probability > 0 && random() < probability) {
       return { wake: true, reason: '概率唤醒' };
     }
     return { wake: false, reason: '潜水中，未命中触发条件' };
