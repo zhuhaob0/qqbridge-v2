@@ -185,3 +185,59 @@ export function ensureAgentToken(db, sessionKey) {
   db.prepare('UPDATE sessions SET agent_token = ? WHERE session_key = ?').run(token, sessionKey);
   return token;
 }
+
+// ── 表情 ──────────────────────────────────────────────────
+export function upsertSticker(db, { id, desc = '', note = '', tags = [], url = '' }) {
+  db.prepare(`INSERT INTO stickers (id, desc, note, tags, url, created_at) VALUES (?,?,?,?,?,?)
+    ON CONFLICT(id) DO UPDATE SET desc = excluded.desc, note = excluded.note,
+      tags = excluded.tags, url = excluded.url`).run(
+    String(id), desc, note, toJson(tags), url, new Date().toISOString(),
+  );
+  return getSticker(db, id);
+}
+
+export function getSticker(db, id) {
+  const row = db.prepare('SELECT * FROM stickers WHERE id = ?').get(String(id));
+  if (!row) return null;
+  return { id: row.id, desc: row.desc, note: row.note, tags: parseJson(row.tags, []), url: row.url };
+}
+
+export function updateSticker(db, id, patch = {}) {
+  const current = getSticker(db, id);
+  if (!current) return null;
+  return upsertSticker(db, { ...current, ...patch });
+}
+
+export function listStickers(db, query = '') {
+  const rows = db.prepare('SELECT * FROM stickers ORDER BY created_at DESC').all();
+  const q = String(query ?? '').toLowerCase();
+  return rows
+    .map((r) => ({ id: r.id, desc: r.desc, note: r.note, tags: parseJson(r.tags, []), url: r.url }))
+    .filter((s) => !q || [s.desc, s.note, ...(s.tags ?? [])].join(' ').toLowerCase().includes(q));
+}
+
+// ── 黑话 ──────────────────────────────────────────────────
+export function upsertSlang(db, { term, meaning = '', usage = '', status = 'confirmed' }) {
+  db.prepare(`INSERT INTO slang (term, meaning, usage, status, created_at) VALUES (?,?,?,?,?)
+    ON CONFLICT(term) DO UPDATE SET meaning = excluded.meaning, usage = excluded.usage, status = excluded.status`)
+    .run(term, meaning, usage, status, new Date().toISOString());
+  return getSlang(db, term);
+}
+
+export function getSlang(db, term) {
+  const row = db.prepare('SELECT * FROM slang WHERE term = ?').get(term);
+  return row ? { term: row.term, meaning: row.meaning, usage: row.usage, status: row.status } : null;
+}
+
+export function listSlang(db, query = '') {
+  const q = String(query ?? '').toLowerCase();
+  return db.prepare('SELECT * FROM slang ORDER BY created_at DESC').all()
+    .map((r) => ({ term: r.term, meaning: r.meaning, usage: r.usage, status: r.status }))
+    .filter((s) => !q || [s.term, s.meaning, s.usage].join(' ').toLowerCase().includes(q));
+}
+
+// ── 反馈 ──────────────────────────────────────────────────
+export function addFeedback(db, { message, level = 'info' }) {
+  db.prepare('INSERT INTO feedback (message, level, at) VALUES (?,?,?)')
+    .run(String(message), level, new Date().toISOString());
+}

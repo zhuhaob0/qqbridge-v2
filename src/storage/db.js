@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 const MIGRATIONS = [
   `
@@ -55,6 +55,32 @@ const MIGRATIONS = [
   CREATE TABLE IF NOT EXISTS kv (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
+  );
+  `,
+  // v2 → 表情、黑话、反馈
+  `
+  CREATE TABLE IF NOT EXISTS stickers (
+    id TEXT PRIMARY KEY,
+    desc TEXT,
+    note TEXT,
+    tags TEXT,
+    url TEXT,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS slang (
+    term TEXT PRIMARY KEY,
+    meaning TEXT,
+    usage TEXT,
+    status TEXT NOT NULL DEFAULT 'confirmed',
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message TEXT NOT NULL,
+    level TEXT NOT NULL DEFAULT 'info',
+    at TEXT NOT NULL
   );
   `,
 ];

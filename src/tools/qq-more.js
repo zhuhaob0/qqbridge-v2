@@ -1,0 +1,196 @@
+/**
+ * QQ 工具（P1 档：详情、成员、转发、图片、表情）
+ */
+
+import * as q from '../storage/queries.js';
+import { parseSessionKey } from '../router/session.js';
+import { ToolError } from './registry.js';
+
+const keyParam = { type: 'string', description: '会话 key' };
+const tokenParam = { type: 'string', description: '会话令牌' };
+
+function requirePort(ctx, method, hint) {
+  const fn = ctx.qq?.[method];
+  if (typeof fn !== 'function') throw new ToolError(`当前传输层不支持：${hint}`, 'unsupported');
+  return fn.bind(ctx.qq);
+}
+
+async function rateLimit(ctx, action, target, limit, window = 'minute') {
+  const rate = q.consumeRate(ctx.db, { action, target, window, limit });
+  if (!rate.ok) throw new ToolError(`操作过于频繁（${rate.count}/${rate.limit}）`, 'rate_limited');
+}
+
+export function registerQqMoreTools(registry) {
+  registry.register({
+    name: 'qq_get_message_detail',
+    description: '看某条消息的发送者与引用关系。',
+    scope: 'all',
+    inputSchema: {
+      type: 'object',
+      properties: { key: keyParam, token: tokenParam, messageId: { type: ['string', 'number'] } },
+      required: ['key', 'token', 'messageId'],
+    },
+    async run(ctx, args) {
+      const getDetail = ctx.qq?.messageDetail;
+      if (typeof getDetail === 'function') {
+        return getDetail.call(ctx.qq, args.messageId);
+      }
+      const rows = q.recentMessages(ctx.db, ctx.sessionKey, 200);
+      const hit = rows.find((m) => String(m.msgId) === String(args.messageId));
+      if (!hit) throw new ToolError('未找到该消息', 'not_found');
+      return hit;
+    },
+  });
+
+  registry.register({
+    name: 'qq_get_group_members',
+    description: '列出群成员（QQ 号、昵称、群名片）。',
+    scope: 'all',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        key: keyParam, token: tokenParam,
+        groupId: { type: ['string', 'number'], description: '缺省为当前群' },
+        limit: { type: 'number' },
+      },
+      required: ['key', 'token'],
+    },
+    async run(ctx, args) {
+      const parsed = parseSessionKey(ctx.sessionKey);
+      const gid = args.groupId ?? (parsed?.kind === 'public' ? parsed.id : null);
+      if (!gid) throw new ToolError('不在群会话里，请指定 groupId', 'no_group');
+      const list = requirePort(ctx, 'groupMembers', '读取群成员');
+      const members = await list(Number(gid));
+      const limit = Number(args.limit ?? 50);
+      return { ok: true, groupId: String(gid), count: Array.isArray(members) ? members.length : 0, members: (members ?? []).slice(0, limit) };
+    },
+  });
+
+  registry.register({
+    name: 'qq_get_active_members',
+    description: '最近活跃的成员（按会话里的发言统计，不需要额外接口）。',
+    scope: 'all',
+    inputSchema: {
+      type: 'object',
+      properties: { key: keyParam, token: tokenParam, limit: { type: 'number' }, days: { type: 'number' } },
+      required: ['key', 'token'],
+    },
+    run(ctx, args) {
+      const days = Number(args.days ?? 7);
+      const limit = Number(args.limit ?? 10);
+      const since = new Date(Date.now() - days * 86400000).toISOString();
+      const rows = ctx.db
+        .prepare(`SELECT sender_id, sender_name, COUNT(*) AS n FROM messages
+          WHERE session_key = ? AND direction = 'inbound' AND at >= ?
+          GROUP BY sender_id ORDER BY n DESC LIMIT ?`)
+        .all(ctx.sessionKey, since, limit);
+      return { ok: true, days, members: rows.map((r) => ({ userId: r.sender_id, name: r.sender_name, count: r.n })) };
+    },
+  });
+
+  registry.register({
+    name: 'qq_get_forward_msg',
+    description: '展开一条合并转发消息。',
+    scope: 'all',
+    inputSchema: {
+      type: 'object',
+      properties: { key: keyParam, token: tokenParam, id: { type: 'string' } },
+      required: ['key', 'token', 'id'],
+    },
+    async run(ctx, args) {
+      const getForward = requirePort(ctx, 'forwardMsg', '读取合并转发');
+      return getForward(args.id);
+    },
+  });
+
+  registry.register({
+    name: 'qq_send_image',
+    description: '发一张图片（只接受 http/https 链接）。',
+    scope: 'all',
+    inputSchema: {
+      type: 'object',
+      properties: { key: keyParam, token: tokenParam, url: { type: 'string' }, replyToMessageId: { type: ['string', 'number'] } },
+      required: ['key', 'token', 'url'],
+    },
+    async run(ctx, args) {
+      const url = String(args.url ?? '');
+      if (!/^https?:\/\//i.test(url)) throw new ToolError('只接受 http(s) 图片链接', 'bad_url');
+      await rateLimit(ctx, 'image', ctx.sessionKey, ctx.config?.send?.imagesPerMinute ?? 2);
+      const send = requirePort(ctx, 'sendImage', '发送图片');
+      const result = await send(ctx.sessionKey, url, { replyToMessageId: args.replyToMessageId });
+      if (!result?.ok) throw new ToolError(`发送图片失败：${result?.error ?? '未知原因'}`, 'send_failed');
+      return { ok: true, url, msgId: result.msgId ?? null };
+    },
+  });
+
+  registry.register({
+    name: 'qq_send_sticker',
+    description: '发一个收藏表情（按 id 或备注）。',
+    scope: 'all',
+    inputSchema: {
+      type: 'object',
+      properties: { key: keyParam, token: tokenParam, stickerId: { type: 'string' }, replyToMessageId: { type: ['string', 'number'] } },
+      required: ['key', 'token', 'stickerId'],
+    },
+    async run(ctx, args) {
+      await rateLimit(ctx, 'sticker', ctx.sessionKey, ctx.config?.send?.stickersPerMinute ?? 2);
+      const send = requirePort(ctx, 'sendSticker', '发送表情');
+      const result = await send(ctx.sessionKey, args.stickerId, { replyToMessageId: args.replyToMessageId });
+      if (!result?.ok) throw new ToolError(`发送表情失败：${result?.error ?? '未知原因'}`, 'send_failed');
+      return { ok: true, stickerId: args.stickerId, msgId: result.msgId ?? null };
+    },
+  });
+
+  registry.register({
+    name: 'qq_collect_sticker',
+    description: '把一条消息里的表情/图片收进收藏，可写一句备注。',
+    scope: 'all',
+    inputSchema: {
+      type: 'object',
+      properties: { key: keyParam, token: tokenParam, messageId: { type: ['string', 'number'] }, remark: { type: 'string' } },
+      required: ['key', 'token', 'messageId'],
+    },
+    async run(ctx, args) {
+      const collect = requirePort(ctx, 'collectSticker', '收藏表情');
+      const result = await collect(args.messageId, args.remark ?? '');
+      if (result?.ok && result.sticker) {
+        q.upsertSticker?.(ctx.db, {
+          id: String(result.sticker.id ?? args.messageId),
+          desc: result.sticker.desc ?? '',
+          note: args.remark ?? '',
+          tags: result.sticker.tags ?? [],
+          url: result.sticker.url ?? '',
+        });
+      }
+      return result;
+    },
+  });
+
+  registry.register({
+    name: 'qq_sticker_note',
+    description: '给收藏表情写备注/标签，方便以后挑。',
+    scope: 'all',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        key: keyParam, token: tokenParam,
+        stickerId: { type: 'string' }, note: { type: 'string' },
+        tags: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['key', 'token', 'stickerId'],
+    },
+    run(ctx, args) {
+      const sticker = q.getSticker?.(ctx.db, args.stickerId);
+      if (!sticker) throw new ToolError('未收藏该表情', 'not_found');
+      q.updateSticker?.(ctx.db, args.stickerId, { note: args.note ?? sticker.note, tags: args.tags ?? sticker.tags });
+      return { ok: true, sticker: q.getSticker(ctx.db, args.stickerId) };
+    },
+  });
+
+  return registry;
+}
+
+export const QQ_P1_TOOL_NAMES = [
+  'qq_get_message_detail', 'qq_get_group_members', 'qq_get_active_members', 'qq_get_forward_msg',
+  'qq_send_image', 'qq_send_sticker', 'qq_collect_sticker', 'qq_sticker_note',
+];

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { openDatabase } from '../src/storage/db.js';
+import { openDatabase, SCHEMA_VERSION } from '../src/storage/db.js';
 import * as q from '../src/storage/queries.js';
 import { createConsoleServer } from '../src/console/server.js';
 
@@ -42,7 +42,7 @@ test('控制台：健康检查包含 schema 与依赖状态', async () => {
   await withConsole(async ({ base }) => {
     const data = await (await fetch(`${base}/health`)).json();
     assert.equal(data.ok, true);
-    assert.equal(data.schema, 1);
+    assert.equal(data.schema, SCHEMA_VERSION);
     assert.equal(data.memory.enabled, false);
   });
 });
