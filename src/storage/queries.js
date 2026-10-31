@@ -146,6 +146,26 @@ export function pruneMessages(db, beforeIso) {
 }
 
 // ── 未读 / 已读 ───────────────────────────────────────────
+export function messageByMsgId(db, msgId) {
+  const r = db.prepare('SELECT * FROM messages WHERE msg_id = ? LIMIT 1').get(String(msgId));
+  if (!r) return null;
+  return {
+    msgId: r.msg_id, sessionKey: r.session_key, direction: r.direction,
+    text: r.text, hasMedia: Boolean(r.has_media), media: parseJson(r.media, null), at: r.at,
+  };
+}
+
+export function latestMediaMessage(db, sessionKey) {
+  const r = db.prepare(`SELECT * FROM messages
+    WHERE session_key = ? AND has_media = 1 AND direction = 'inbound'
+    ORDER BY at DESC LIMIT 1`).get(sessionKey);
+  if (!r) return null;
+  return {
+    msgId: r.msg_id, sessionKey: r.session_key, text: r.text,
+    hasMedia: true, media: parseJson(r.media, null), at: r.at,
+  };
+}
+
 export function unreadMessages(db, sessionKey, sinceIso, limit = 30) {
   const since = sinceIso ?? '1970-01-01T00:00:00.000Z';
   return db

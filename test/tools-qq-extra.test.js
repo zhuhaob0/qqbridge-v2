@@ -41,7 +41,7 @@ test('P2 档工具都在注册表里（26 个全齐）', () => {
     'qq_list_stickers', 'qq_get_sticker_image', 'qq_list_voices', 'qq_send_voice',
     'qq_send_poke', 'qq_slang_query', 'qq_slang_submit', 'qq_report_feedback',
   ]) assert.ok(names.includes(name), `缺少 ${name}`);
-  assert.equal(names.length, 26, `工具总数应为 26，实际 ${names.length}`);
+  assert.equal(names.length, 27, `工具总数应为 27，实际 ${names.length}`);
 });
 
 test('表情库：列表与搜索', async () => {

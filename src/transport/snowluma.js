@@ -152,10 +152,19 @@ export function createSnowLumaTransport({
         if (!/^[A-Za-z0-9+/=\s]+$/.test(s.slice(0, 128))) return null;
         try { return Buffer.from(s.replace(/\s+/g, ''), 'base64'); } catch { return null; }
       };
+      const cached = (buf, file) => {
+        if (!buf || buf.length === 0) return null;
+        try {
+          const dir = path.join(process.cwd(), 'state', 'media');
+          fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(path.join(dir, path.basename(String(file ?? 'image'))), buf);
+        } catch { /* 缓存失败不影响使用 */ }
+        return buf;
+      };
       const accept = (buf, via) => {
         if (!buf || buf.length === 0 || buf.length > maxBytes) return null;
         const mime = sniff(buf);
-        return mime ? { buffer: buf, mimeType: mime, via } : null;
+        return mime ? { buffer: cached(buf, file), mimeType: mime, via } : null;
       };
 
       // ① get_image
@@ -168,7 +177,7 @@ export function createSnowLumaTransport({
           const inner = info?.url ?? info?.file_url ?? info?.data?.url ?? '';
           if (inner) {
             const downloaded = await this.downloadImage(inner, maxBytes);
-            if (downloaded) return downloaded;
+            if (downloaded) { cached(downloaded.buffer, file || 'image'); return downloaded; }
           }
         } catch (error) {
           logger?.warn?.('get_image 失败，尝试 url', { reason: error?.message ?? String(error) });
@@ -178,7 +187,7 @@ export function createSnowLumaTransport({
       // ② 消息里的 url
       if (url) {
         const downloaded = await this.downloadImage(url, maxBytes);
-        if (downloaded) return downloaded;
+        if (downloaded) { cached(downloaded.buffer, file || 'image'); return downloaded; }
       }
       return null;
     },

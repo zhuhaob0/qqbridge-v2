@@ -2,6 +2,8 @@
  * QQ 工具（P1 档：详情、成员、转发、图片、表情）
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
 import * as q from '../storage/queries.js';
 import { parseSessionKey } from '../router/session.js';
 import { ToolError } from './registry.js';
@@ -124,6 +126,56 @@ export function registerQqMoreTools(registry) {
   });
 
   registry.register({
+    name: 'qq_forward_image',
+    description: '把一张图片/表情转发到当前会话。默认取 from 会话里最近一张；也可指定 messageId 或 url。',
+    scope: 'all',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        key: keyParam,
+        token: tokenParam,
+        from: { type: 'string', description: '来源会话 key，例如 group:123456' },
+        messageId: { type: ['string', 'number'], description: '指定消息 id（可选）' },
+        url: { type: 'string', description: '直接给图片链接（可选）' },
+      },
+      required: ['key', 'token'],
+    },
+    async run(ctx, args) {
+      const source = args.from ? String(args.from) : ctx.sessionKey;
+      let media = null;
+      if (args.url) {
+        media = { url: String(args.url) };
+      } else if (args.messageId) {
+        const msg = q.messageByMsgId(ctx.db, args.messageId);
+        media = msg?.media?.find((m) => m.type === 'image') ?? null;
+      } else {
+        const msg = q.latestMediaMessage(ctx.db, source);
+        media = msg?.media?.find((m) => m.type === 'image') ?? null;
+      }
+      if (!media) throw new ToolError('没找到可转发的图片', 'no_media');
+
+      const cacheDir = path.join(process.cwd(), 'state', 'media');
+      const cached = media.file ? path.join(cacheDir, path.basename(String(media.file))) : '';
+      let payload = '';
+      let via = '';
+      if (cached && fs.existsSync(cached)) {
+        payload = 'base64://' + fs.readFileSync(cached).toString('base64');
+        via = 'cache';
+      } else if (media.url) {
+        payload = String(media.url);
+        via = 'url';
+      }
+      if (!payload) throw new ToolError('图片既没有本地缓存也没有可用链接', 'no_source');
+
+      await rateLimit(ctx, 'image', ctx.sessionKey, ctx.config?.send?.imagesPerMinute ?? 2);
+      const send = requirePort(ctx, 'sendImage', '发送图片');
+      const result = await send(ctx.sessionKey, payload, {});
+      if (!result?.ok) throw new ToolError(`转发失败：${result?.error ?? '未知原因'}`, 'send_failed');
+      return { ok: true, from: source, via, msgId: result.msgId ?? null };
+    },
+  });
+
+  registry.register({
     name: 'qq_send_sticker',
     description: '发一个收藏表情（按 id 或备注）。',
     scope: 'all',
@@ -192,5 +244,5 @@ export function registerQqMoreTools(registry) {
 
 export const QQ_P1_TOOL_NAMES = [
   'qq_get_message_detail', 'qq_get_group_members', 'qq_get_active_members', 'qq_get_forward_msg',
-  'qq_send_image', 'qq_send_sticker', 'qq_collect_sticker', 'qq_sticker_note',
+  'qq_send_image', 'qq_forward_image', 'qq_send_sticker', 'qq_collect_sticker', 'qq_sticker_note',
 ];

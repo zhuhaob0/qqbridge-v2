@@ -29,6 +29,7 @@ export const SEND_TOOLS = new Set([
   'qq_send_private_message',
   'qq_send_group_message',
   'qq_send_image',
+  'qq_forward_image',
   'qq_send_sticker',
   'qq_send_voice',
 ]);
