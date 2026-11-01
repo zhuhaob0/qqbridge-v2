@@ -66,6 +66,14 @@ if (!lock.ok) {
 }
 
 const db = openDatabase(config.storagePath ?? './state/qqbridge.db');
+
+// DSH 每次重启都会让旧 sessionId 失效；不清掉会一直挂到超时（表现为「不回复」）
+try {
+  const cleared = q.clearAgentSessions(db);
+  if (cleared?.changes) logger?.info?.('已清空过期的 DSH 会话映射', { count: cleared.changes });
+} catch (error) {
+  logger?.warn?.('清空会话映射失败', { reason: error?.message ?? String(error) });
+}
 const memory = config.memory?.enabled
   ? createMemoryClient({
     baseUrl: config.memory.baseUrl,

@@ -80,6 +80,16 @@ export function setWakeState(db, sessionKey, wakeState) {
   db.prepare('UPDATE sessions SET wake_state = ? WHERE session_key = ?').run(toJson(wakeState), sessionKey);
 }
 
+export function updateMessageText(db, sessionKey, msgId, text) {
+  return db.prepare('UPDATE messages SET text = ? WHERE session_key = ? AND msg_id = ?')
+    .run(String(text ?? ''), String(sessionKey), String(msgId));
+}
+
+/** DSH 重启后旧 sessionId 全部失效：清空映射，下次发言自动重建 */
+export function clearAgentSessions(db) {
+  return db.prepare('UPDATE sessions SET agent_session = NULL').run();
+}
+
 export function setAgentSession(db, sessionKey, agentSession) {
   db.prepare('UPDATE sessions SET agent_session = ? WHERE session_key = ?').run(agentSession, sessionKey);
 }

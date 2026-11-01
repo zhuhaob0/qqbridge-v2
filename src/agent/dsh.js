@@ -21,7 +21,7 @@ export function createDshAgent({
   workspacePath = null,
   preset = null,
   logger = null,
-  turnTimeoutMs = 180000,
+  turnTimeoutMs = 90000,
   resolveBase = null,
 } = {}) {
   const waiters = new Map(); // sessionId -> { collector, resolve, reject, timer }
@@ -103,7 +103,14 @@ export function createDshAgent({
     const content = Array.isArray(message)
       ? message
       : [{ type: 'text', text: String(message ?? '') }];
-    await api.sessions.prompt({ sessionId, mode: 'queue', content });
+    const promptTimeoutMs = turnTimeoutMs;
+    await Promise.race([
+      api.sessions.prompt({ sessionId, mode: 'queue', content }),
+      new Promise((_, reject) => {
+        const timer = setTimeout(() => reject(new Error('DSH prompt 请求超时')), promptTimeoutMs);
+        timer.unref?.();
+      }),
+    ]);
 
     const ended = await result;
     if (ended?.reason?.kind && ended.reason.kind !== 'completed') {
