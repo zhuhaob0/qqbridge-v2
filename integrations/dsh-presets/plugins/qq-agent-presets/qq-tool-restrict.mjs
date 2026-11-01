@@ -225,6 +225,12 @@ const SAFE_PREFIXES = [
 const SAFE_EXACT = new Set([
   'ask_user_question',
   'todo_write',
+  // 桥接自带的 QQ 空间工具（不是 MCP 前缀，需要显式放行）
+  'qq_qzone_post',
+  'qq_qzone_my_posts',
+  'qq_qzone_feeds',
+  'qq_qzone_like',
+  'qq_qzone_comment',
 ])
 
 // ── 诊断落盘：restrict 失败时到底为什么 ────────────────────────────────────

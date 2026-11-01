@@ -247,6 +247,12 @@ export function createSnowLumaTransport({
       }
     },
 
+    /** 调 SnowLuma 的任意 OneBot action（QQ 空间这类扩展能力走这里） */
+    async callAction(action, params = {}) {
+      if (typeof client.call !== 'function') throw new Error('SDK 不支持 call(action)');
+      return client.call(action, params);
+    },
+
     /** 群名（带进程内缓存，查不到返回空串） */
     async groupName(groupId) {
       const id = String(groupId ?? '');

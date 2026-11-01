@@ -85,10 +85,10 @@ test('发图：只接受 http(s)，并有频率限制', async () => {
     () => registry.call('qq_send_image', { key, token, url: 'file:///etc/passwd' }, ctx),
     /http\(s\)/,
   );
-  await registry.call('qq_send_image', { key, token, url: 'https://x/1.png' }, ctx);
-  await registry.call('qq_send_image', { key, token, url: 'https://x/2.png' }, ctx);
+  await registry.call('qq_send_image', { key, token, url: 'http://127.0.0.1:1/1.png' }, ctx);
+  await registry.call('qq_send_image', { key, token, url: 'http://127.0.0.1:1/2.png' }, ctx);
   await assert.rejects(
-    () => registry.call('qq_send_image', { key, token, url: 'https://x/3.png' }, ctx),
+    () => registry.call('qq_send_image', { key, token, url: 'http://127.0.0.1:1/3.png' }, ctx),
     /过于频繁/,
   );
 });
@@ -115,7 +115,7 @@ test('表情备注：不存在的表情报错', async () => {
 test('传输层不支持时给出明确错误', async () => {
   const { registry, ctx, key, token } = setup({ withPort: false });
   await assert.rejects(
-    () => registry.call('qq_send_image', { key, token, url: 'https://x/1.png' }, ctx),
+    () => registry.call('qq_send_image', { key, token, url: 'http://127.0.0.1:1/1.png' }, ctx),
     /不支持/,
   );
 });
