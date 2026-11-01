@@ -46,6 +46,21 @@ export const DEFAULTS = {
   console: { port: 3100, token: '' },
   storagePath: '',
   retain: { messagesDays: 90 },
+  wake: {
+    privateAlways: true,
+    triggers: { at: true, name: true, question: true, anyMessage: false, probabilityGroup: 0.05 },
+  },
+  social: {
+    enabled: true,
+    proactiveEnabled: true,
+    idleThresholdMs: 30 * 60 * 1000,
+    checkMinMs: 45 * 60 * 1000,
+    checkMaxMs: 90 * 60 * 1000,
+    probability: 0.2,
+    probeAfterIdleMs: 3 * 60 * 1000,
+    probeProbability: 0.25,
+    probeWaitMs: 2 * 60 * 1000,
+  },
   rotate: {
     // 会话轮转：消息数或文件大小任一超限就归档旧会话、开新代次
     enabled: true,

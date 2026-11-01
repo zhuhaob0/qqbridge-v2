@@ -202,20 +202,31 @@ export function registerQqTools(registry) {
 
   registry.register({
     name: 'qq_wait_for_messages',
-    description: '等这个会话来新消息（最长 10 分钟）；超时返回空。',
+    description: '等这个会话来新消息。purpose=reply 时最多等 8 秒、连续 1.5 秒无新消息就返回；purpose=observe 时最多等 60 秒、安静 3 秒返回。返回 waitedMs 是真实等待时长。',
     scope: 'all',
     inputSchema: {
       type: 'object',
-      properties: { key: keyParam, token: tokenParam, timeoutMs: { type: 'number' } },
+      properties: {
+        key: keyParam, token: tokenParam,
+        timeoutMs: { type: 'number' },
+        quietMs: { type: 'number' },
+        purpose: { type: 'string', enum: ['reply', 'observe'] },
+      },
       required: ['key', 'token'],
     },
     async run(ctx, args) {
-      const timeout = Math.min(Number(args.timeoutMs ?? 30000), 600000);
-      const startedAt = Date.now();
-      const msg = await ctx.bus.waitFor(ctx.sessionKey, { timeoutMs: timeout });
-      const waitedMs = Date.now() - startedAt;
-      if (!msg) return { ok: true, timeout: true, waitedMs, messages: [] };
-      return { ok: true, timeout: false, waitedMs, messages: [msg] };
+      const purpose = String(args.purpose ?? '');
+      const maxMs = Math.min(Number(args.timeoutMs ?? (purpose === 'observe' ? 60000 : purpose === 'reply' ? 8000 : 30000)), 600000);
+      const quietMs = Math.max(0, Number(args.quietMs ?? (purpose === 'reply' ? 1500 : purpose === 'observe' ? 3000 : 0)));
+      const result = await ctx.bus.waitQuiet(ctx.sessionKey, { timeoutMs: maxMs, quietMs });
+      return {
+        ok: true,
+        purpose: purpose || null,
+        timeout: result.timedOut,
+        waitedMs: result.waitedMs,
+        quietMs,
+        messages: result.messages ?? [],
+      };
     },
   });
 

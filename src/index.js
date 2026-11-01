@@ -15,6 +15,8 @@ import { createLogger } from './util/logger.js';
 import { acquireLock } from './util/lock.js';
 import { createMemoryClient } from './memory/client.js';
 import { createApp } from './app.js';
+import { createSocialLoop } from './wake/social.js';
+import { runProactiveTurn } from './orchestrator/proactive.js';
 import { createConsoleServer } from './console/server.js';
 import { createDryRunQq } from './qq/dry-run.js';
 import { createBus } from './router/bus.js';
@@ -126,6 +128,18 @@ const app = createApp({
 });
 
 transport?.start();
+
+// 社交循环：群里长时间安静时主动开话题（与 v1 语义一致）
+let social = null;
+if (!flags.dryRun && config?.social?.enabled !== false) {
+  social = createSocialLoop({
+    db, q, config, logger,
+    runProactive: (sessionKey, purpose) => runProactiveTurn({
+      db, q, config, agent, memory, qq: qq ?? transport, logger, sessionKey, purpose,
+    }),
+  });
+  social.start();
+}
 
 
 const scheduler = createScheduler({
