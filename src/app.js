@@ -8,9 +8,11 @@ import { shouldWake } from './wake/policy.js';
 import { createBatcher } from './wake/batcher.js';
 import { createOrchestrator } from './orchestrator/run.js';
 import * as q from './storage/queries.js';
+import { downloadAudio, toWav, cleanup } from './speech/audio.js';
 
 export function createApp({
-  db, config, agent, qq, memory = null, logger = null, clock = () => new Date(), random = Math.random, sleep, bus = null,
+  db, config, agent, qq, memory = null, speech = null, logger = null,
+  clock = () => new Date(), random = Math.random, sleep, bus = null,
 } = {}) {
   const orchestrator = createOrchestrator({ db, config, agent, qq, memory, logger, clock, random, sleep });
 
@@ -25,6 +27,64 @@ export function createApp({
     },
   });
 
+  /** 记忆写入与「是否回复」无关：否则没被叫到的群聊内容永远不会进记忆 */
+  function rememberMessage(msg, ctx) {
+    if (!memory || !msg.text) return;
+    const shareScope = memory.shareScope ?? 'group';
+    const isGroup = msg.kind !== 'direct';
+    const sensitivity = shareScope === 'all' ? 'shared' : isGroup ? (shareScope === 'group' ? 'shared' : 'channel') : 'channel';
+    Promise.resolve(memory.ingest({
+      channel: {
+        id: ctx?.channelId,
+        kind: msg.kind,
+        participants: ctx?.participants ?? [],
+        recordPublic: config?.memory?.recordGroupChatter !== false,
+      },
+      events: [{ role: 'user', text: msg.text, at: msg.at, sensitivity }],
+    })).catch((error) => logger?.warn?.('记忆写入失败', { key: msg.sessionKey, reason: error?.message ?? String(error) }));
+  }
+
+  function wake(msg) {
+    // 用库里真实的会话状态：群聊/私聊默认活跃；潜水（diving）只认 @/点名/提问
+    const dbSession = q.getSession(db, msg.sessionKey);
+    const session = dbSession ?? { wakeState: { mode: 'active' } };
+    const decision = shouldWake({ msg, session, config, now: clock().getTime(), random });
+    if (!decision.wake) {
+      logger?.debug?.('不唤醒', { key: msg.sessionKey, reason: decision.reason });
+      return;
+    }
+    batcher.push(msg.sessionKey, msg);
+  }
+
+  /** 语音：下载 → 解码 SILK → 16k wav → SenseVoice → 文本回填，再走唤醒 */
+  async function transcribeVoice(msg, ctx) {
+    const media = (msg.media ?? []).find((m) => m.type === 'record');
+    let file = null;
+    let wav = null;
+    try {
+      if (!media?.url) throw new Error('语音消息没有可用链接');
+      const downloaded = await downloadAudio(media.url);
+      file = downloaded.file;
+      wav = await toWav(file);
+      const started = clock().getTime();
+      const text = await speech.transcribe({ audioPath: wav });
+      if (text) {
+        const display = `[语音：${text}]`;
+        q.updateMessageText(db, msg.sessionKey, msg.msgId, display);
+        msg.text = display;
+        logger?.info?.('语音已转写', { key: msg.sessionKey, chars: text.length, elapsedMs: clock().getTime() - started });
+      } else {
+        logger?.warn?.('语音转写为空', { key: msg.sessionKey });
+      }
+    } catch (error) {
+      logger?.warn?.('语音转写失败', { key: msg.sessionKey, reason: error?.message ?? String(error) });
+    } finally {
+      cleanup(file, wav);
+    }
+    rememberMessage(msg, ctx);
+    wake(msg);
+  }
+
   const router = createRouter({
     db,
     config,
@@ -32,32 +92,13 @@ export function createApp({
     clock,
     onMessage: (msg, ctx) => {
       bus?.emitMessage?.(msg);
-      // 记忆写入与「是否回复」无关：否则没被叫到的群聊内容永远不会进记忆，
-      // 私聊里自然也就问不出群聊发生过什么。
-      if (memory && msg.text) {
-        const shareScope = memory.shareScope ?? 'group';
-        const isGroup = msg.kind !== 'direct';
-        const sensitivity = shareScope === 'all' ? 'shared' : isGroup ? (shareScope === 'group' ? 'shared' : 'channel') : 'channel';
-        Promise.resolve(memory.ingest({
-          channel: {
-            id: ctx?.channelId,
-            kind: msg.kind,
-            participants: ctx?.participants ?? [],
-            recordPublic: config?.memory?.recordGroupChatter !== false,
-          },
-          events: [{ role: 'user', text: msg.text, at: msg.at, sensitivity }],
-        })).catch((error) => logger?.warn?.('记忆写入失败', { key: msg.sessionKey, reason: error?.message ?? String(error) }));
-      }
-      // 用库里真实的会话状态：群聊默认活跃（有人说话就接），私聊也默认活跃；
-      // 潜水（diving）只认 @/点名/提问
-      const dbSession = q.getSession(db, msg.sessionKey);
-      const session = dbSession ?? { wakeState: { mode: 'active' } };
-      const decision = shouldWake({ msg, session, config, now: clock().getTime(), random });
-      if (!decision.wake) {
-        logger?.debug?.('不唤醒', { key: msg.sessionKey, reason: decision.reason });
+      const hasRecord = (msg.media ?? []).some((m) => m.type === 'record');
+      if (hasRecord && speech && speech.provider !== 'none') {
+        void transcribeVoice(msg, ctx);
         return;
       }
-      batcher.push(msg.sessionKey, msg);
+      rememberMessage(msg, ctx);
+      wake(msg);
     },
   });
 

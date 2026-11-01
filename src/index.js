@@ -97,19 +97,21 @@ if (!qq) {
 const bus = createBus();
 const registry = createToolRegistry();
 
+const speech = createSpeech(config.speech ?? {}, { logger });
+
 const app = createApp({
   db,
   config,
   agent,
   qq: qq ?? transport,
   memory,
+  speech,
   logger,
   bus,
 });
 
 transport?.start();
 
-const speech = createSpeech(config.speech ?? {});
 
 const scheduler = createScheduler({
   logger,
@@ -147,6 +149,7 @@ if (flags.console) {
     config,
     transport,
     memory,
+    speech,
     logger,
     registry,
     toolCtx: { db, config, qq: qq ?? transport, memory, bus, logger },

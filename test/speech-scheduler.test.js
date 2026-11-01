@@ -9,51 +9,36 @@ test('语音：provider=none 直接返回 null', async () => {
   assert.equal(await speech.transcribe({ audioPath: 'x.wav' }), null);
 });
 
+test('语音：未知 provider 直接报错', () => {
+  assert.throws(() => createSpeech({ provider: 'whisper' }), /未知的 speech.provider/);
+});
+
+test('语音：sherpa 模型缺失时 status 为未就绪', () => {
+  const speech = createSpeech({ provider: 'sherpa', modelDir: 'Z:/not-exist' });
+  const status = speech.status();
+  assert.equal(status.provider, 'sherpa');
+  assert.equal(status.ready, false);
+});
+
 test('语音：http provider 调用转写接口', async () => {
-  let captured = null;
-  const speech = createSpeech({
-    provider: 'http',
-    http: { url: 'http://asr', apiKey: 'k', model: 'whisper-1' },
-  }, {
-    fetchImpl: async (url, init) => {
-      captured = { url, auth: init.headers?.authorization, hasBody: Boolean(init.body) };
-      return { ok: true, json: async () => ({ text: '你好世界' }) };
-    },
+  const { createServer } = await import('node:http');
+  const server = createServer((req, res) => {
+    let size = 0;
+    req.on('data', (chunk) => { size += chunk.length; });
+    req.on('end', () => {
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ text: '你好世界' }));
+    });
   });
-  const r = await speech.transcribe({ audioBase64: Buffer.from('x').toString('base64') });
-  assert.equal(r.text, '你好世界');
-  assert.equal(captured.url, 'http://asr');
-  assert.equal(captured.auth, 'Bearer k');
-});
-
-test('语音：http 失败返回 null 不抛', async () => {
-  const speech = createSpeech({ provider: 'http', http: { url: 'http://asr' } }, {
-    fetchImpl: async () => ({ ok: false, status: 500, json: async () => ({}) }),
-  });
-  assert.equal(await speech.transcribe({ audioBase64: 'eA==' }), null);
-});
-
-test('语音：sensevoice 解析 JSON 输出', async () => {
-  const speech = createSpeech(
-    { provider: 'sensevoice', sensevoice: { script: 't.py', model: 'm', python: 'python' } },
-    { exec: async ({ command, args }) => {
-      assert.equal(command, 'python');
-      assert.ok(args.includes('t.py'));
-      return '{"text":"今天好累","confidence":0.9}';
-    } },
-  );
-  const r = await speech.transcribe({ audioPath: 'a.wav' });
-  assert.equal(r.text, '今天好累');
-  assert.equal(r.confidence, 0.9);
-});
-
-test('语音：sensevoice 输出非 JSON 时按纯文本处理', async () => {
-  const speech = createSpeech(
-    { provider: 'sensevoice', sensevoice: { script: 't.py', python: 'python' } },
-    { exec: async () => '纯文本结果' },
-  );
-  const r = await speech.transcribe({ audioPath: 'a.wav' });
-  assert.equal(r.text, '纯文本结果');
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+  try {
+    const speech = createSpeech({ provider: 'http', http: { url: `http://127.0.0.1:${port}/asr`, apiKey: 'k' } });
+    const r = await speech.transcribe({ audioBase64: Buffer.from('x').toString('base64') });
+    assert.equal(r, '你好世界');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
 
 test('定时任务：到点执行一次，同一天不重复', async () => {

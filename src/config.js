@@ -52,9 +52,12 @@ export const DEFAULTS = {
     pruneAt: '04:50',
   },
   speech: {
+    // none / sherpa（本地 SenseVoice）/ http（OpenAI 兼容接口）
     provider: 'none',
     voicesDir: './audio',
-    sensevoice: { model: '', threads: 2 },
+    modelDir: '',
+    numThreads: 2,
+    language: 'zh',
     http: { url: '', apiKey: '', model: 'whisper-1' },
   },
   security: { sensitivePatterns: ['sk-', 'token', '密码'] },
@@ -111,7 +114,7 @@ export function validateConfig(config) {
   if (Number(minGapMs) > Number(maxGapMs)) errors.push('send.minGapMs 不能大于 send.maxGapMs');
   if (Number(maxGapMs) > 10000) warnings.push('send.maxGapMs 过大，可能显得不自然');
 
-  const validSpeech = ['sensevoice', 'whisper', 'http', 'none'];
+  const validSpeech = ['sherpa', 'http', 'none'];
   if (!validSpeech.includes(config?.speech?.provider)) {
     errors.push(`speech.provider 必须是 ${validSpeech.join(' / ')}`);
   }

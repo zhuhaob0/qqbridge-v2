@@ -20,6 +20,7 @@ function authorized(req, url, token) {
 }
 
 export function createConsoleServer({
+  speech = null,
   db, config, transport = null, memory = null, logger = null, registry = null, toolCtx = null,
   stats = () => ({}), getSessions = null, token = config?.console?.token ?? '', port = config?.console?.port ?? 3100,
 } = {}) {
@@ -53,6 +54,7 @@ export function createConsoleServer({
         uptimeMs: Date.now() - startedAt,
         schema: db ? Number(db.prepare('PRAGMA user_version').get()?.user_version ?? 0) : null,
         memory: memory ? { degraded: Boolean(memory.degraded) } : { enabled: false },
+    speech: speech && typeof speech.status === 'function' ? speech.status() : { provider: 'none' },
         transport: transport ? { connected: Boolean(transport.connected) } : { connected: false },
       });
       return;
