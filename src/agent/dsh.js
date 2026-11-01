@@ -75,12 +75,35 @@ export function createDshAgent({
       const raw = await api.sessions.list({});
       const body = raw?.result?.ok ? raw.result.value : raw;
       const list = body?.sessions ?? body?.items ?? (Array.isArray(body) ? body : []);
-      knownSessions = new Set(list.map((s) => s?.sessionId).filter(Boolean));
+      knownSessions = new Map(list.filter((s) => s?.sessionId).map((s) => [s.sessionId, s?.projections?.values?.title ?? s?.title ?? '']));
       return knownSessions;
     } catch (error) {
       logger?.warn?.('读取会话列表失败', { reason: error?.message ?? String(error) });
       knownSessions = null;
       return null;
+    }
+  }
+
+  /** 让会话标题可读（DSH 默认会用首条消息当标题，QQ 这边首条是【你的性格】） */
+  async function ensureTitle(sessionId, sessionKey) {
+    if (!sessionId) return;
+    const desired = /^group:(\d{1,20})$/.test(sessionKey)
+      ? 'QQ 群 · ' + sessionKey.slice('group:'.length)
+      : 'QQ 私聊 · ' + sessionKey.slice('private:'.length);
+    const current = knownSessions?.get(sessionId) ?? '';
+    // 已经是我们起的名字就不动（尊重手动重命名）；只有空标题或自动生成的才改
+    const auto = current === '' || current.startsWith('【') || current.startsWith('session-');
+    if (!auto || current === desired) return;
+    try {
+      const raw = await api.sessions.rename({ sessionId, title: desired });
+      if (raw?.result?.ok) {
+        knownSessions?.set(sessionId, desired);
+        logger?.info?.('会话标题已设为可读', { sessionKey, title: desired });
+      } else {
+        logger?.debug?.('会话改名失败', { sessionKey, error: raw?.result?.error?.code });
+      }
+    } catch (error) {
+      logger?.debug?.('会话改名异常', { reason: error?.message ?? String(error) });
     }
   }
 
@@ -102,6 +125,7 @@ export function createDshAgent({
         sessionByKey.set(sessionKey, selfKey);
         api.events?.follow?.(selfKey);
         logger?.info?.('复用已有的 DSH 会话', { sessionKey, sessionId: selfKey });
+        await ensureTitle(selfKey, sessionKey);
         return selfKey;
       }
       params.sessionId = selfKey;
@@ -115,11 +139,11 @@ export function createDshAgent({
     }
     const sessionId = body?.sessionId ?? null;
     if (!sessionId) throw new Error('DSH 未返回 sessionId');
-    knownSessions?.add(sessionId);
-    if (knownSessions) knownSessions.add(sessionId);
+    knownSessions?.set(sessionId, '');
     sessionByKey.set(sessionKey, sessionId);
     api.events?.follow?.(sessionId);
     logger?.info?.('已创建 DSH 会话', { sessionKey, sessionId, preset: wantPreset ?? null });
+    await ensureTitle(sessionId, sessionKey);
     return sessionId;
   }
 
