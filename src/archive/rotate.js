@@ -65,17 +65,24 @@ export async function rotateSession({
   const summaryPrompt = config?.rotate?.summaryPrompt
     ?? '把上面这段对话总结成不超过 8 条要点：主题、结论、未完成的事。只输出要点，不要寒暄。';
 
+  const file = sessionFileOf(sessionId);
+  let sizeBytes = 0;
+  if (file) { try { sizeBytes = fs.statSync(file).size; } catch { sizeBytes = 0; } }
+
+  // 摘要用「转录文本 + 临时 standard 会话」：QQ preset 的模型只会用工具说话，直接问它不会回文本
   let summary = '';
   try {
-    summary = String(await agent.summarize(sessionId, summaryPrompt) ?? '').trim();
+    const { text: transcript } = readTranscript(file, { limit: 120, maxChars: 8000 });
+    if (transcript && typeof agent.summarizeWithText === 'function') {
+      const label0 = String(sessionKey).startsWith('group:') ? 'QQ 群聊' : 'QQ 私聊';
+      summary = String(await agent.summarizeWithText(
+        `以下是一段${label0}记录（${sessionKey}）。请按下面的要求输出，不要调用任何工具：\n${summaryPrompt}\n\n===== 记录开始 =====\n${transcript}\n===== 记录结束 =====`,
+      ) ?? '').trim();
+    }
   } catch (error) {
     logger?.warn?.('归档摘要生成失败，使用占位摘要', { key: sessionKey, reason: error?.message ?? String(error) });
   }
   if (!summary) summary = `（第 ${generation} 代会话，摘要生成失败）`;
-
-  const file = sessionFileOf(sessionId);
-  let sizeBytes = 0;
-  if (file) { try { sizeBytes = fs.statSync(file).size; } catch { sizeBytes = 0; } }
   const range = q.messageRange(db, sessionKey);
   const messageCount = q.countMessages(db, sessionKey);
   const archivedAt = new Date().toISOString();
@@ -132,6 +139,19 @@ export async function rotateSession({
 }
 
 
+/** 单条事件里的纯文本（兼容 data.text 与 data.content 块） */
+function extractEventText(ev) {
+  const data = ev?.data ?? {};
+  if (typeof data.text === 'string' && data.text) return data.text;
+  const blocks = Array.isArray(data.content) ? data.content : [];
+  const text = blocks.filter((b) => b?.type === 'text' && b.text).map((b) => b.text).join('\n');
+  if (text) return text;
+  if (typeof data.message?.text === 'string') return data.message.text;
+  const content = data.message?.content;
+  if (Array.isArray(content)) return content.filter((b) => b?.type === 'text' && b.text).map((b) => b.text).join('\n');
+  return '';
+}
+
 /** 从归档文件里抽取对话正文（user/assistant 文本），可按关键词过滤 */
 export function readTranscript(filePath, { keyword = '', limit = 30, maxChars = 3000 } = {}) {
   if (!filePath || !fs.existsSync(filePath)) return { text: '', matched: 0 };
@@ -142,7 +162,7 @@ export function readTranscript(filePath, { keyword = '', limit = 30, maxChars = 
     if (!line.trim()) continue;
     let ev; try { ev = JSON.parse(line); } catch { continue; }
     if (ev.type !== 'user/message' && ev.type !== 'assistant/message') continue;
-    const text = String(ev.data?.text ?? ev.data?.message?.text ?? '');
+    const text = extractEventText(ev);
     if (!text) continue;
     if (keyword && !text.includes(keyword)) continue;
     lines.push(`${ev.type === 'user/message' ? '用户' : 'AI'}：${text.replace(/\s+/g, ' ').slice(0, 300)}`);

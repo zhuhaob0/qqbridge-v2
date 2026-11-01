@@ -6,6 +6,7 @@
  */
 
 import path from 'node:path';
+import { collectText } from './port.js';
 
 /** DSH 会话 id 要编码 QQ 会话：preset 的 qq-tool-restrict 靠它做跨会话绑定校验 */
 function selfKeyFor(sessionKey, generation = 1) {
@@ -170,6 +171,26 @@ export function createDshAgent({
     return String(text ?? '').trim();
   }
 
+  /**
+   * 用一段转录文本生成摘要：开一个临时 standard 会话（避免 QQ preset 的「只用工具说话」约束），
+   * 拿到文本后立刻归档掉这个临时会话。
+   */
+  async function summarizeWithText(transcript) {
+    const text = String(transcript ?? '').trim();
+    if (!text) return '';
+    const raw = await api.sessions.create({ agentPreset: 'minimal' });
+    const body = raw?.result?.ok ? raw.result.value : raw;
+    const tempId = body?.sessionId;
+    if (!tempId) throw new Error('创建摘要会话失败');
+    try {
+      const reply = await collectText(send(tempId, text, { timeoutMs: 180000 }));
+      return String(reply ?? '').trim();
+    } finally {
+      archiveSession(tempId).catch(() => {});
+      sessionByKey.delete(tempId);
+    }
+  }
+
   /** 把 DSH 会话归档（从列表移走，文件保留） */
   async function archiveSession(sessionId) {
     if (!sessionId) return false;
@@ -210,7 +231,7 @@ export function createDshAgent({
     }
   }
 
-  async function* send(sessionId, message) {
+  async function* send(sessionId, message, options = {}) {
     if (!pumpRunning) pump().catch(() => {});
     api.events?.follow?.(sessionId);
 
@@ -219,7 +240,7 @@ export function createDshAgent({
       const timer = setTimeout(() => {
         waiters.delete(sessionId);
         reject(new Error('DSH 回合超时'));
-      }, turnTimeoutMs);
+      }, options.timeoutMs ?? turnTimeoutMs);
       waiters.set(sessionId, { collector, resolve, reject, timer });
     });
 
@@ -227,7 +248,7 @@ export function createDshAgent({
     const content = Array.isArray(message)
       ? message
       : [{ type: 'text', text: String(message ?? '') }];
-    const promptTimeoutMs = turnTimeoutMs;
+    const promptTimeoutMs = options.timeoutMs ?? turnTimeoutMs;
     await Promise.race([
       api.sessions.prompt({ sessionId, mode: 'queue', content }),
       new Promise((_, reject) => {
@@ -260,6 +281,7 @@ export function createDshAgent({
     refreshBase,
     refreshTitle,
     summarize,
+    summarizeWithText,
     archiveSession,
     ensureSession,
     send,
