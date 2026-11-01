@@ -107,6 +107,21 @@ export function createDshAgent({
     }
   }
 
+  /** 每轮都可以调用：标题不一致才改名（用于绑定已存在的会话也能刷新标题） */
+  async function refreshTitle(sessionId, sessionKey, title) {
+    if (!sessionId || !title) return false;
+    if (!knownSessions) await refreshKnownSessions();
+    const current = knownSessions?.get(sessionId) ?? '';
+    if (current === title) return false;
+    const ours = current === '' || current.startsWith('【') || current.startsWith('session-') || /^QQ (私聊|群) ·/.test(current);
+    if (!ours) return false;
+    try {
+      const raw = await api.sessions.rename({ sessionId, title });
+      if (raw?.result?.ok) { knownSessions?.set(sessionId, title); return true; }
+    } catch { /* 忽略 */ }
+    return false;
+  }
+
   async function ensureSession(sessionKey, options = {}) {
     if (sessionByKey.has(sessionKey)) return sessionByKey.get(sessionKey);
     const workspaceId = await ensureWorkspace();
@@ -227,6 +242,7 @@ export function createDshAgent({
   return {
     api,
     refreshBase,
+    refreshTitle,
     ensureSession,
     send,
     startPump: pump,

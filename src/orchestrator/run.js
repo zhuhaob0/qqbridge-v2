@@ -138,6 +138,7 @@ export function createOrchestrator({
       for (let attempt = 0; attempt < 2; attempt += 1) {
         const sessionId = session.agentSession ?? await agent.ensureSession(sessionKey, { preset: config?.agent?.preset, title: sessionTitle });
         if (!session.agentSession) q.setAgentSession(db, sessionKey, sessionId);
+        if (sessionTitle) agent.refreshTitle?.(sessionId, sessionKey, sessionTitle).catch(() => {});
         try {
           text = await collectText(agent.send(sessionId, images.length ? promptContent : prompt));
           break;

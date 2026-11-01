@@ -21,6 +21,8 @@ export function createSnowLumaTransport({
 } = {}) {
   let started = false;
   const b = { ...fallbackBuilders, ...builder };
+  // 群名/昵称缓存（进程内）
+  const nameCache = new Map();
 
   function forward(event) {
     try {
