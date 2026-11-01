@@ -124,6 +124,14 @@ export function registerQqMoreTools(registry) {
     async run(ctx, args) {
       const archive = q.getArchiveBySession(ctx.db, String(args.sessionId ?? ''));
       if (!archive) throw new ToolError('没有这个归档会话的记录（id 可能来自过期记忆）', 'archive_not_found');
+      if (!archive.file_path) {
+        return {
+          sessionId: archive.session_id, generation: archive.generation,
+          range: { firstAt: archive.first_at, lastAt: archive.last_at },
+          summary: archive.summary, matched: 0,
+          text: '（这个归档只留下了摘要，原文文件已丢失）',
+        };
+      }
       const { text, matched } = readTranscript(archive.file_path, {
         keyword: String(args.keyword ?? ''),
         limit: Number(args.limit ?? 30),

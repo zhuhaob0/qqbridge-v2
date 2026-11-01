@@ -170,3 +170,20 @@ export function readTranscript(filePath, { keyword = '', limit = 30, maxChars = 
   const picked = lines.slice(0, limit).join('\n');
   return { text: picked.slice(0, maxChars), matched: lines.length };
 }
+
+
+/** 彻底删除一个会话（仅用于摘要用的临时会话；归档会话禁止调用） */
+export function removeSessionFiles(sessionId, sessionsRoot = path.join(os.homedir(), '.dsh', 'sessions')) {
+  let removed = 0;
+  try {
+    for (const ws of fs.readdirSync(sessionsRoot)) {
+      const dir = path.join(sessionsRoot, ws, sessionId);
+      if (fs.existsSync(dir)) { fs.rmSync(dir, { recursive: true, force: true }); removed += 1; }
+    }
+  } catch { /* 忽略 */ }
+  try {
+    const cache = path.join(os.homedir(), '.dsh', 'storages', 'session_projcache', 'sessions', sessionId + '.json');
+    if (fs.existsSync(cache)) { fs.unlinkSync(cache); removed += 1; }
+  } catch { /* 忽略 */ }
+  return removed;
+}

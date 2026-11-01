@@ -188,6 +188,7 @@ export function createDshAgent({
     } finally {
       archiveSession(tempId).catch(() => {});
       sessionByKey.delete(tempId);
+      try { (await import('../archive/rotate.js')).removeSessionFiles(tempId); } catch { /* 忽略 */ }
     }
   }
 
