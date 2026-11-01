@@ -51,6 +51,15 @@ QQ ←→ SnowLuma(OneBot 网关) ←→ qqbridge-v2(桥接) ←→ DSH(agent) �
 | 标题不可读 | `sessions.rename` 设成 `QQ 私聊 · 老大(QQ号)` / `QQ 群 · 群名(群号)`；会话标题每轮刷新 |
 | transport failed | 已知 issue：会话引用缺失附件时会永远失败（0 HTTP 请求）。本机扫描未发现缺失附件；大体积会话（14MB+）也可能触发 → 建议定期开新会话 |
 
+## 4.5 会话轮转归档（2026-11-01 新增）
+
+- 配置：`config.rotate`（enabled / groupMessages=800 / privateMessages=1500 / maxBytes=8MB）
+- 判定：**消息数 或 文件大小** 任一超限（群聊与私聊阈值不同）
+- 流程：当前会话模型写摘要（一次额外 turn）→ `workspace/archiveSession` → 写 `archives` 表 →
+  摘要作为**普通记忆**写入 mnema（会随遗忘曲线淡出）→ 代次 +1（`qqb-p-123-g2`）
+- 读取：`qq_archive_read(sessionId, keyword?)`，**没有全量检索**——只能凭记忆里出现过的 sessionId 读
+- 守卫：`qq-self-key.mjs` 的 BOUND_ID_RE 已支持 `-g<代次>` 后缀
+
 ## 5. 当前状态（收尾时）
 
 - 三个服务正常；桥接 health: `transport.connected=true`、`memory.degraded=false`、`speech.ready=true`

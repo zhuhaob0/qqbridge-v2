@@ -8,10 +8,11 @@
 import path from 'node:path';
 
 /** DSH 会话 id 要编码 QQ 会话：preset 的 qq-tool-restrict 靠它做跨会话绑定校验 */
-function selfKeyFor(sessionKey) {
+function selfKeyFor(sessionKey, generation = 1) {
   const m = /^(private|group):(\d{1,20})$/.exec(String(sessionKey ?? ''));
   if (!m) return null;
-  return `qqb-${m[1] === 'group' ? 'g' : 'p'}-${m[2]}`;
+  const gen = Number(generation) > 1 ? `-g${Number(generation)}` : '';
+  return `qqb-${m[1] === 'group' ? 'g' : 'p'}-${m[2]}${gen}`;
 }
 import { createTurnCollector } from './collector.js';
 
@@ -129,7 +130,8 @@ export function createDshAgent({
     const wantPreset = options.preset ?? preset;
     if (wantPreset) params.agentPreset = wantPreset;
 
-    const selfKey = selfKeyFor(sessionKey);
+    const generation = Number(options.generation ?? 1) || 1;
+    const selfKey = selfKeyFor(sessionKey, generation);
 
     // 先看这个 QQ 会话是否已经有对应的 DSH 会话：
     // DSH 的 create 在 id 已存在时会**新建一个 uuid 会话**（实测），
@@ -160,6 +162,20 @@ export function createDshAgent({
     logger?.info?.('已创建 DSH 会话', { sessionKey, sessionId, preset: wantPreset ?? null });
     await ensureTitle(sessionId, sessionKey, options.title);
     return sessionId;
+  }
+
+  /** 让当前会话的模型写一段摘要（用于归档交接） */
+  async function summarize(sessionId, prompt) {
+    const text = await collectText(send(sessionId, String(prompt ?? '')));
+    return String(text ?? '').trim();
+  }
+
+  /** 把 DSH 会话归档（从列表移走，文件保留） */
+  async function archiveSession(sessionId) {
+    if (!sessionId) return false;
+    const raw = await api.workspace.archiveSession({ sessionId });
+    if (!raw?.result?.ok) throw new Error(raw?.result?.error?.message ?? 'archive failed');
+    return true;
   }
 
   function dispatch(frame) {
@@ -243,6 +259,8 @@ export function createDshAgent({
     api,
     refreshBase,
     refreshTitle,
+    summarize,
+    archiveSession,
     ensureSession,
     send,
     startPump: pump,

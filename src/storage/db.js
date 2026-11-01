@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 const MIGRATIONS = [
   `
@@ -82,6 +82,24 @@ const MIGRATIONS = [
     level TEXT NOT NULL DEFAULT 'info',
     at TEXT NOT NULL
   );
+  `,
+  // v3：会话归档（轮转后的旧会话记录；本地只做存储，检索必须经过记忆）
+  `
+  CREATE TABLE IF NOT EXISTS archives (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_key TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    session_id TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    message_count INTEGER NOT NULL DEFAULT 0,
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    first_at TEXT,
+    last_at TEXT,
+    file_path TEXT,
+    archived_at TEXT NOT NULL,
+    UNIQUE(session_key, generation)
+  );
+  CREATE INDEX IF NOT EXISTS idx_archives_key ON archives(session_key, generation);
   `,
 ];
 

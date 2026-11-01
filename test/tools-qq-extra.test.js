@@ -34,14 +34,15 @@ function setup({ withPort = true } = {}) {
   return { db, token, qq, ctx, registry, key: 'private:1' };
 }
 
-test('P2 档工具都在注册表里（26 个全齐）', () => {
+test('P2 档工具都在注册表里（28 个全齐）', () => {
   const { registry } = setup();
   const names = registry.list().map((t) => t.name);
   for (const name of [
     'qq_list_stickers', 'qq_get_sticker_image', 'qq_list_voices', 'qq_send_voice',
     'qq_send_poke', 'qq_slang_query', 'qq_slang_submit', 'qq_report_feedback',
+    'qq_archive_read',
   ]) assert.ok(names.includes(name), `缺少 ${name}`);
-  assert.equal(names.length, 27, `工具总数应为 27，实际 ${names.length}`);
+  assert.equal(names.length, 28, `工具总数应为 28，实际 ${names.length}`);
 });
 
 test('表情库：列表与搜索', async () => {

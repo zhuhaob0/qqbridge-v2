@@ -40,10 +40,6 @@ export function recentMessages(db, sessionKey, limit = 20) {
     .reverse();
 }
 
-export function countMessages(db, sessionKey) {
-  return Number(db.prepare('SELECT COUNT(*) AS n FROM messages WHERE session_key = ?').get(sessionKey)?.n ?? 0);
-}
-
 // ── sessions ──────────────────────────────────────────────
 export function getSession(db, sessionKey) {
   const row = db.prepare('SELECT * FROM sessions WHERE session_key = ?').get(sessionKey);
@@ -270,4 +266,40 @@ export function listSlang(db, query = '') {
 export function addFeedback(db, { message, level = 'info' }) {
   db.prepare('INSERT INTO feedback (message, level, at) VALUES (?,?,?)')
     .run(String(message), level, new Date().toISOString());
+}
+
+// ── 会话归档 ──────────────────────────────────────────────
+export function insertArchive(db, a) {
+  return db.prepare(`INSERT INTO archives
+    (session_key, generation, session_id, summary, message_count, size_bytes, first_at, last_at, file_path, archived_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`)
+    .run(a.sessionKey, a.generation, a.sessionId, a.summary, a.messageCount ?? 0, a.sizeBytes ?? 0,
+      a.firstAt ?? null, a.lastAt ?? null, a.filePath ?? null, a.archivedAt);
+}
+
+export function getArchive(db, id) {
+  return db.prepare('SELECT * FROM archives WHERE id = ?').get(Number(id)) ?? null;
+}
+
+export function getArchiveBySession(db, sessionId) {
+  return db.prepare('SELECT * FROM archives WHERE session_id = ? ORDER BY id DESC LIMIT 1').get(String(sessionId)) ?? null;
+}
+
+export function listArchives(db, sessionKey = null, limit = 20) {
+  if (sessionKey) return db.prepare('SELECT * FROM archives WHERE session_key = ? ORDER BY generation DESC LIMIT ?').all(sessionKey, limit);
+  return db.prepare('SELECT * FROM archives ORDER BY id DESC LIMIT ?').all(limit);
+}
+
+export function countMessages(db, sessionKey) {
+  return Number(db.prepare('SELECT COUNT(*) AS n FROM messages WHERE session_key = ?').get(sessionKey)?.n ?? 0);
+}
+
+export function messageRange(db, sessionKey) {
+  const row = db.prepare('SELECT MIN(at) AS firstAt, MAX(at) AS lastAt FROM messages WHERE session_key = ?').get(sessionKey);
+  return { firstAt: row?.firstAt ?? null, lastAt: row?.lastAt ?? null };
+}
+
+export function countMessagesSince(db, sessionKey, sinceIso) {
+  if (!sinceIso) return countMessages(db, sessionKey);
+  return Number(db.prepare('SELECT COUNT(*) AS n FROM messages WHERE session_key = ? AND at > ?').get(sessionKey, sinceIso)?.n ?? 0);
 }

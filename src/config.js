@@ -46,6 +46,14 @@ export const DEFAULTS = {
   console: { port: 3100, token: '' },
   storagePath: '',
   retain: { messagesDays: 90 },
+  rotate: {
+    // 会话轮转：消息数或文件大小任一超限就归档旧会话、开新代次
+    enabled: true,
+    groupMessages: 800,
+    privateMessages: 1500,
+    maxBytes: 8 * 1024 * 1024,
+    summaryPrompt: '把上面这段对话总结成不超过 8 条要点：主题、结论、未完成的事。只输出要点，不要寒暄。',
+  },
   media: {
     // 收图缓存（state/media）保留天数；每天 prune-media 清理过期文件
     retainDays: 30,

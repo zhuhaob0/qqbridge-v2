@@ -8,6 +8,7 @@ import { split } from './splitter.js';
 import * as q from '../storage/queries.js';
 import { channelIdFor, participantsFor } from '../router/session.js';
 import { takeToolSend } from '../tools/stats.js';
+import { shouldRotate, rotateSession } from '../archive/rotate.js';
 
 const defaultSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -60,6 +61,29 @@ export function createOrchestrator({
     }
     const channelId = channelIdFor(sessionKey);
     const participants = participantsFor(sessionKey, { selfId: 'self' });
+
+    // 会话轮转：消息数/文件大小超阈值 → 摘要 → 归档 → 代次+1
+    let generation = Number(q.getKv(db, `gen:${sessionKey}`, '1')) || 1;
+    if (config?.rotate?.enabled !== false && session.agentSession) {
+      const genAt = q.getKv(db, `genAt:${sessionKey}`, '');
+      const counted = q.countMessagesSince(db, sessionKey, genAt);
+      const trigger = shouldRotate({ config, sessionKey, sessionId: session.agentSession, messageCount: counted });
+      if (trigger) {
+        logger?.info?.('触发会话轮转', { key: sessionKey, reason: trigger.reason, detail: trigger.detail, generation });
+        try {
+          const result = await rotateSession({
+            db, q, config, agent, memory, sessionKey, logger,
+            sessionId: session.agentSession, generation,
+          });
+          generation = result.nextGeneration;
+          q.setKv(db, `genAt:${sessionKey}`, clock().toISOString());
+          q.setAgentSession(db, sessionKey, null);
+          session.agentSession = null;
+        } catch (error) {
+          logger?.error?.('会话轮转失败', { key: sessionKey, reason: error?.message ?? String(error) });
+        }
+      }
+    }
 
     // 会话标题：群名 / 昵称，方便在 DSH 侧边栏分辨
     let sessionTitle = '';
@@ -136,8 +160,11 @@ export function createOrchestrator({
     try {
       // 迁移过来的 DSH 会话可能已失效：失败时清掉再建一次
       for (let attempt = 0; attempt < 2; attempt += 1) {
-        const sessionId = session.agentSession ?? await agent.ensureSession(sessionKey, { preset: config?.agent?.preset, title: sessionTitle });
-        if (!session.agentSession) q.setAgentSession(db, sessionKey, sessionId);
+        const sessionId = session.agentSession ?? await agent.ensureSession(sessionKey, { preset: config?.agent?.preset, title: sessionTitle, generation });
+        if (!session.agentSession) {
+          q.setAgentSession(db, sessionKey, sessionId);
+          if (!q.getKv(db, `genAt:${sessionKey}`, '')) q.setKv(db, `genAt:${sessionKey}`, clock().toISOString());
+        }
         if (sessionTitle) agent.refreshTitle?.(sessionId, sessionKey, sessionTitle).catch(() => {});
         try {
           text = await collectText(agent.send(sessionId, images.length ? promptContent : prompt));

@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as q from '../storage/queries.js';
 import { resolveImageSource } from './image-source.js';
+import { readTranscript } from '../archive/rotate.js';
 import { parseSessionKey } from '../router/session.js';
 import { ToolError } from './registry.js';
 
@@ -103,6 +104,38 @@ export function registerQqMoreTools(registry) {
     async run(ctx, args) {
       const getForward = requirePort(ctx, 'forwardMsg', '读取合并转发');
       return getForward(args.id);
+    },
+  });
+
+  registry.register({
+    name: 'qq_archive_read',
+    description: '读取一个已归档的旧会话（只能凭记忆里出现过的 sessionId 读，没有索引可搜）。',
+    scope: 'all',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        key: keyParam, token: tokenParam,
+        sessionId: { type: 'string', description: '归档会话的 sessionId，如 qqb-p-123-g1' },
+        keyword: { type: 'string' },
+        limit: { type: 'number' },
+      },
+      required: ['key', 'token', 'sessionId'],
+    },
+    async run(ctx, args) {
+      const archive = q.getArchiveBySession(ctx.db, String(args.sessionId ?? ''));
+      if (!archive) throw new ToolError('没有这个归档会话的记录（id 可能来自过期记忆）', 'archive_not_found');
+      const { text, matched } = readTranscript(archive.file_path, {
+        keyword: String(args.keyword ?? ''),
+        limit: Number(args.limit ?? 30),
+      });
+      return {
+        sessionId: archive.session_id,
+        generation: archive.generation,
+        range: { firstAt: archive.first_at, lastAt: archive.last_at },
+        summary: archive.summary,
+        matched,
+        text: text || '（归档文件里没有匹配的正文）',
+      };
     },
   });
 

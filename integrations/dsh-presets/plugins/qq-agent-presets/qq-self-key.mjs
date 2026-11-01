@@ -20,21 +20,23 @@
 //    模型既看不到也改不了。这正是本方案与「信任 arguments.key」的本质区别。
 
 /** sessionId 前缀：`qqb-<g|p>-<id>`（qq bridge bound）。 */
-const BOUND_ID_RE = /^qqb-([gp])-(\d{1,20})(?:-[a-f0-9]{32})?$/;
+// 允许代次后缀：qqb-p-2621072338-g2（会话归档轮转后使用）
+const BOUND_ID_RE = /^qqb-([gp])-(\d{1,20})(?:-g(\d+))?(?:-[a-f0-9]{32})?$/;
 
 /**
  * 把 QQ 会话 key 编码成桥接预分配的 DSH sessionId。
  * @param {string} key - `group:群号` 或 `private:QQ号`。
  * @returns {string} 可安全用作单一路径段的 sessionId；key 不合法时返回 ''。
  */
-export function encodeSelfKey(key) {
+export function encodeSelfKey(key, generation = 1) {
   const m = /^(group|private):(\d{1,20})$/.exec(String(key ?? '').trim());
   if (!m) return '';
   const id = Number(m[2]);
   // 与桥接的 canonicalKey 同口径：必须是正的 safe integer，否则 `group:0001` 之类
   // 会编码成与 `group:1` 不同的字符串，绕开「同一个会话」的判定。
   if (!Number.isSafeInteger(id) || id <= 0) return '';
-  return `qqb-${m[1] === 'group' ? 'g' : 'p'}-${id}`;
+  const gen = Number(generation) > 1 ? `-g${Number(generation)}` : '';
+  return `qqb-${m[1] === 'group' ? 'g' : 'p'}-${id}${gen}`;
 }
 
 /**
