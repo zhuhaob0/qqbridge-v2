@@ -33,6 +33,10 @@ export const CONSOLE_PAGE = `<!doctype html>
 <main>
   <div class="panel"><h2>健康</h2><pre id="health"></pre></div>
   <div class="panel"><h2>统计</h2><pre id="stats"></pre></div>
+  <div class="panel"><h2>归档会话（仅运维可见；AI 只能靠记忆命中 sessionId）</h2>
+    <table><thead><tr><th>时间范围</th><th>会话</th><th>代次</th><th>消息</th><th>摘要</th></tr></thead><tbody id="archives"></tbody></table>
+    <pre id="archiveDetail" style="margin-top:12px"></pre>
+  </div>
   <div class="panel"><h2>会话</h2>
     <table><thead><tr><th>会话</th><th>类型</th><th>最后消息</th></tr></thead><tbody id="sessions"></tbody></table>
   </div>

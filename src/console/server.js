@@ -3,8 +3,11 @@
  */
 
 import http from 'node:http';
+import fs from 'node:fs';
 import { CONSOLE_PAGE } from './page.js';
 import { markToolSend, SEND_TOOLS } from '../tools/stats.js';
+import { getArchive, listArchives } from '../storage/queries.js';
+import { readTranscript } from '../archive/rotate.js';
 
 function sendJson(res, status, payload) {
   const body = JSON.stringify(payload);
@@ -75,6 +78,46 @@ export function createConsoleServer({
       } catch (error) {
         sendJson(res, 400, { ok: false, error: error?.message ?? String(error), code: error?.code ?? 'error' });
       }
+      return;
+    }
+
+    if (path === '/archives' && req.method === 'GET') {
+      // 运维视图：给人看的归档清单（AI 侧没有这个入口，它只能靠记忆命中 sessionId）
+      const rows = db ? listArchives(db, null, 50).map((a) => ({
+        id: a.id,
+        sessionKey: a.session_key,
+        generation: a.generation,
+        sessionId: a.session_id,
+        summary: a.summary,
+        messageCount: a.message_count,
+        sizeBytes: a.size_bytes,
+        firstAt: a.first_at,
+        lastAt: a.last_at,
+        archivedAt: a.archived_at,
+        hasFile: Boolean(a.file_path && fs.existsSync(a.file_path)),
+      })) : [];
+      sendJson(res, 200, { ok: true, archives: rows });
+      return;
+    }
+
+    const archiveMatch = /^\/archives\/(\d+)$/.exec(path);
+    if (archiveMatch && req.method === 'GET') {
+      const row = db ? getArchive(db, archiveMatch[1]) : null;
+      if (!row) { sendJson(res, 404, { ok: false, error: '没有这个归档' }); return; }
+      const keyword = url.searchParams.get('keyword') ?? '';
+      const file = row.file_path && fs.existsSync(row.file_path) ? row.file_path : null;
+      const { text, matched } = file ? readTranscript(file, { keyword, limit: 200 }) : { text: '', matched: 0 };
+      sendJson(res, 200, {
+        ok: true,
+        archive: {
+          id: row.id, sessionKey: row.session_key, generation: row.generation, sessionId: row.session_id,
+          summary: row.summary, messageCount: row.message_count, sizeBytes: row.size_bytes,
+          firstAt: row.first_at, lastAt: row.last_at, archivedAt: row.archived_at,
+          hasFile: Boolean(file),
+        },
+        matched,
+        text: file ? text : '（这个归档没有原文文件，只剩摘要）',
+      });
       return;
     }
 
