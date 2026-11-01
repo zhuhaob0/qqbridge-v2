@@ -19,6 +19,11 @@ test('过程叙述：已读水位、本轮观察这类判断也要拦', () => {
   }
 });
 
+test('过程叙述：旁观式描述 + 决定不参与', () => {
+  assert.equal(looksLikeProcessNarration('void_love() 对雨花石说，听说喜家德不错，自己还没去吃过，这是他们俩的对话，我就不接话了。').meta, true);
+  assert.equal(looksLikeProcessNarration('他们俩在聊天，我就不插话了').meta, true);
+});
+
 test('过程叙述：正常的聊天回复不能误伤', () => {
   for (const text of [
     '哈哈哈哈你怎么这么好笑',
@@ -26,6 +31,9 @@ test('过程叙述：正常的聊天回复不能误伤', () => {
     '那你说说看，我不潜水',
     '行，那我先去忙了，晚点聊',
     '这家店我吃过，味道一般',
+    '他们在聊什么？',
+    '妈妈对我说早点睡，我说知道了',
+    '这家喜家德听说不错，改天去试试',
   ]) {
     assert.equal(looksLikeProcessNarration(text).meta, false, text);
   }
