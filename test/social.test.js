@@ -80,3 +80,53 @@ test('社交循环：关闭后什么都不做', async () => {
   await loop.tick();
   assert.equal(called, 0);
 });
+
+function kvQ(store, { lastInboundMsAgo = 60 * 60 * 1000 } = {}) {
+  return {
+    listSessions: () => [{ sessionKey: 'group:1', kind: 'group' }],
+    latestInbound: () => ({ at: new Date(Date.now() - lastInboundMsAgo).toISOString() }),
+    getKv: (db, key, fallback) => (key in store ? store[key] : fallback),
+    setKv: (db, key, value) => { store[key] = value; },
+  };
+}
+
+test('社交循环：到点按概率尝试发说说（每天最多 3 条）', async () => {
+  const hour = new Date().getHours();
+  const calls = [];
+  const store = {};
+  const loop = createSocialLoop({
+    db: {}, q: kvQ(store),
+    config: {
+      qq: { ownerQQ: 2621072338 },
+      social: {
+        enabled: true, proactiveEnabled: true,
+        qzone: { enabled: true, perDay: 3, windowStartHour: hour, windowEndHour: (hour + 1) % 24, cooldownMs: 0, probability: 1 },
+      },
+    },
+    runProactive: async (key, purpose) => { calls.push({ key, purpose }); return { ok: true, sent: 1 }; },
+    random: () => 0,
+  });
+  await loop.tick();
+  assert.deepEqual(calls, [{ key: 'private:2621072338', purpose: 'qzone' }]);
+  assert.equal(store['qzone:proactive:day'], '1');
+});
+
+test('社交循环：说说冷却期内不重复尝试', async () => {
+  const hour = new Date().getHours();
+  const calls = [];
+  const store = { 'qzone:proactive:last': String(Date.now()) };
+  const loop = createSocialLoop({
+    db: {}, q: kvQ(store),
+    config: {
+      qq: { ownerQQ: 2621072338 },
+      social: {
+        enabled: true, proactiveEnabled: true,
+        qzone: { enabled: true, perDay: 3, windowStartHour: hour, windowEndHour: (hour + 1) % 24, cooldownMs: 6 * 3600 * 1000, probability: 1 },
+      },
+    },
+    runProactive: async (key, purpose) => { calls.push({ key, purpose }); return { ok: true, sent: 1 }; },
+    random: () => 0,
+  });
+  await loop.tick();
+  assert.equal(calls.length, 0);
+});

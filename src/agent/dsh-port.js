@@ -13,15 +13,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export function resolveDshBase({ env = process.env, dir = '.', fallback = '' } = {}) {
-  const fromEnv = env.DSH_BASE_URL;
-  if (fromEnv) return { baseUrl: fromEnv, source: 'env' };
-
+  // state/dsh-port.json 优先：守护插件每次判定宿主端口都会刷新它，
+  // 而 DSH_BASE_URL 是进程启动时注入的，DSH 重启后就会过期（表现：401 / fetch failed）。
   const portFile = path.join(dir, 'state', 'dsh-port.json');
   try {
-    const json = JSON.parse(fs.readFileSync(portFile, 'utf8'));
+    const raw = fs.readFileSync(portFile, 'utf8').replace(/^\uFEFF/, '');
+    const json = JSON.parse(raw);
     if (json?.baseUrl) return { baseUrl: json.baseUrl, source: 'dsh-port.json' };
     if (json?.port) return { baseUrl: `http://127.0.0.1:${json.port}`, source: 'dsh-port.json' };
   } catch { /* 忽略 */ }
+
+  const fromEnv = env.DSH_BASE_URL;
+  if (fromEnv) return { baseUrl: fromEnv, source: 'env' };
 
   const logFile = path.join(dir, 'state', 'launcher', 'plugin.log');
   try {

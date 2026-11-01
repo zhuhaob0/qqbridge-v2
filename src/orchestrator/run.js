@@ -102,6 +102,9 @@ export function createOrchestrator({
       logger?.debug?.('取会话标题失败', { key: sessionKey, reason: error?.message ?? String(error) });
     }
 
+    // turn 开始前刷新端口（DSH 重启会换端口，env 可能是旧的）
+    agent.refreshBase?.();
+
     // ① 记忆（失败不影响对话）
     let memoryData = null;
     let memoryMs = 0;
@@ -180,7 +183,8 @@ export function createOrchestrator({
           const staleSession = /session|not.?found|不存在|404|invalid|unknown|超时|timeout|fetch failed|ECONNREFUSED|ECONNRESET|transport|回合未正常完成|socket hang up|ECONNABORTED/i.test(reason);
           if (attempt === 1 || !staleSession) throw error;
           logger?.warn?.('agent 调用失败，重建会话/刷新端口后重试', { key: sessionKey, reason });
-          agent.refreshBase?.();
+          agent.refreshBase?.({ force: true });
+          agent.refreshAuth?.();
           q.setAgentSession(db, sessionKey, null);
           session.agentSession = null;
         }

@@ -53,11 +53,43 @@ export function createSocialLoop({
     return Number.isFinite(at) ? at : 0;
   }
 
+  /** 说说的窗口/频率判定（纯逻辑，方便测试） */
+  function qzoneDue({ now, cfg, lastAt, postedToday }) {
+    const q = cfg().qzone ?? {};
+    if (q.enabled !== true) return false;
+    if (postedToday >= Number(q.perDay ?? 3)) return false;
+    const start = Number(q.windowStartHour ?? 21);
+    const end = Number(q.windowEndHour ?? 23);
+    const hour = new Date(now).getHours();
+    if (start <= end ? (hour < start || hour >= end) : (hour < start && hour >= end)) return false;
+    const cooldown = Number(q.cooldownMs ?? 6 * 3600 * 1000);
+    if (lastAt && now - lastAt < cooldown) return false;
+    return random() < Number(q.probability ?? 0.3);
+  }
+
+  async function maybePostQzone(now) {
+    const ownerQQ = config?.qq?.ownerQQ;
+    if (!ownerQQ) return;
+    const sessionKey = 'private:' + ownerQQ;
+    const lastAt = Number(q.getKv?.(db, 'qzone:proactive:last', '0')) || 0;
+    const postedToday = Number(q.getKv?.(db, 'qzone:proactive:day', '0')) || 0;
+    const dayKey = new Date(now).toISOString().slice(0, 10);
+    const storedDay = q.getKv?.(db, 'qzone:proactive:dayKey', '');
+    const posted = storedDay === dayKey ? postedToday : 0;
+    if (!qzoneDue({ now, cfg, lastAt, postedToday: posted })) return;
+    q.setKv?.(db, 'qzone:proactive:last', String(now));
+    q.setKv?.(db, 'qzone:proactive:dayKey', dayKey);
+    q.setKv?.(db, 'qzone:proactive:day', String(posted + 1));
+    logger?.info?.('社交模式：尝试发说说', { sessionKey });
+    await runProactive(sessionKey, 'qzone');
+  }
+
   async function tick() {
     if (!enabled() || busy) return;
     busy = true;
     try {
       const now = clock();
+      await maybePostQzone(now);
       const sessions = q.listSessions(db, 200).filter((s) => String(s.sessionKey ?? s.session_key ?? '').startsWith('group:'));
       for (const item of sessions) {
         const key = String(item.sessionKey ?? item.session_key);

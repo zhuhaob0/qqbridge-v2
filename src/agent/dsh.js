@@ -33,6 +33,7 @@ export function createDshAgent({
   turnTimeoutMs = 90000,
   workspaceTitle = null,
   resolveBase = null,
+  resolveBaseFresh = null,
 } = {}) {
   const waiters = new Map(); // sessionId -> { collector, resolve, reject, timer }
   const sessionByKey = new Map();
@@ -275,10 +276,19 @@ export function createDshAgent({
   }
 
   /** DSH 换了端口：重新解析并切过去（调用方在 fetch failed 时调用） */
-  function refreshBase() {
+  /** 清掉缓存的认证信息（DSH 重启后 Cookie 会变，401 时调用） */
+  function refreshAuth() {
+    try { api.invalidateAuth?.(); } catch { /* 忽略 */ }
+  }
+
+  function refreshBase({ force = false } = {}) {
     if (typeof resolveBase !== 'function') return null;
-    const next = resolveBase();
-    if (!next?.baseUrl || next.baseUrl === api.baseUrl) return null;
+    const next = (force && typeof resolveBaseFresh === 'function' ? resolveBaseFresh() : null) ?? resolveBase();
+    if (!next?.baseUrl) return null;
+    if (next.baseUrl === api.baseUrl) {
+      if (force) { try { api.invalidateAuth?.(); } catch { /* 忽略 */ } }
+      return null;
+    }
     logger?.warn?.('DSH 端口变化，切换 baseUrl', { from: api.baseUrl, to: next.baseUrl, source: next.source });
     api.baseUrl = next.baseUrl;
     try { api.invalidateAuth?.(); } catch { /* 忽略 */ }
@@ -288,6 +298,7 @@ export function createDshAgent({
   return {
     api,
     refreshBase,
+    refreshAuth,
     refreshTitle,
     summarize,
     summarizeWithText,
@@ -328,5 +339,6 @@ export async function createDshAgentFromConfig(config, { logger = null } = {}) {
     preset: config?.agent?.preset ?? null,
     logger,
     resolveBase: () => resolveDshBase({ dir, fallback: config?.agent?.baseUrl ?? '' }),
+    resolveBaseFresh: () => resolveDshBase({ dir, fallback: config?.agent?.baseUrl ?? '', env: {} }),
   });
 }
