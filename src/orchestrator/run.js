@@ -128,7 +128,9 @@ export function createOrchestrator({
         } catch (error) {
           const reason = String(error?.message ?? error);
           // 超时也按「会话可能失效」处理：DSH 重启后旧 sessionId 收不到 turn 事件
-          const staleSession = /session|not.?found|不存在|404|invalid|unknown|超时|timeout|fetch failed|ECONNREFUSED|ECONNRESET/i.test(reason);
+          // 传输层中断（DeepSeek Messages transport failed / 回合未正常完成）也值得重试一次：
+          // 模型流式响应被代理或服务端切断时，重建会话重来通常就过了。
+          const staleSession = /session|not.?found|不存在|404|invalid|unknown|超时|timeout|fetch failed|ECONNREFUSED|ECONNRESET|transport|回合未正常完成|socket hang up|ECONNABORTED/i.test(reason);
           if (attempt === 1 || !staleSession) throw error;
           logger?.warn?.('agent 调用失败，重建会话/刷新端口后重试', { key: sessionKey, reason });
           agent.refreshBase?.();
