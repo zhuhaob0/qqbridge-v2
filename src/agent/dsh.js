@@ -192,6 +192,14 @@ export function createDshAgent({
     }
   }
 
+  /** 直接改会话标题（归档时加时间范围用） */
+  async function renameSession(sessionId, title) {
+    if (!sessionId || !title) return false;
+    const raw = await api.sessions.rename({ sessionId, title });
+    if (raw?.result?.ok) { knownSessions?.set(sessionId, title); return true; }
+    return false;
+  }
+
   /** 把 DSH 会话归档（从列表移走，文件保留） */
   async function archiveSession(sessionId) {
     if (!sessionId) return false;
@@ -283,6 +291,7 @@ export function createDshAgent({
     refreshTitle,
     summarize,
     summarizeWithText,
+    renameSession,
     archiveSession,
     ensureSession,
     send,

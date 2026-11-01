@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { shouldRotate, readTranscript, sessionFileOf } from '../src/archive/rotate.js';
+import { shouldRotate, readTranscript, sessionFileOf, formatArchiveTitle } from '../src/archive/rotate.js';
 
 const config = { rotate: { enabled: true, groupMessages: 800, privateMessages: 1500, maxBytes: 8 * 1024 * 1024 } };
 
@@ -36,4 +36,10 @@ test('归档正文读取：文件不存在时返回空', () => {
   const { text, matched } = readTranscript('E:\\no\\such\\file.zstd');
   assert.equal(text, '');
   assert.equal(matched, 0);
+});
+
+test('归档标题带时间范围', () => {
+  const title = formatArchiveTitle('QQ 群 · 大肥鱼和她的朋友们(636960140)', '2026-11-01T10:00:00.000Z', '2026-11-03T09:00:00.000Z');
+  assert.equal(title, 'QQ 群 · 大肥鱼和她的朋友们(636960140)（归档 11-01~11-03）');
+  assert.equal(formatArchiveTitle('', null, null), 'QQ 会话（归档）');
 });

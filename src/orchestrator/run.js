@@ -73,7 +73,7 @@ export function createOrchestrator({
         try {
           const result = await rotateSession({
             db, q, config, agent, memory, sessionKey, logger,
-            sessionId: session.agentSession, generation,
+            sessionId: session.agentSession, generation, title: sessionTitle,
           });
           generation = result.nextGeneration;
           q.setKv(db, `genAt:${sessionKey}`, clock().toISOString());

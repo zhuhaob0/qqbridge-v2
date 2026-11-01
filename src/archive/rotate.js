@@ -59,6 +59,14 @@ export function shouldRotate({ config, sessionKey, sessionId, messageCount }) {
  * @param {object} options
  * @param {object} options.agent 需要有 summarize(sessionId, prompt) 和 archiveSession(sessionId)
  */
+/** 归档标题：原标题 + 时间范围 */
+export function formatArchiveTitle(baseTitle, firstAt, lastAt) {
+  const fmt = (iso) => String(iso ?? '').slice(5, 10).replace('-', '-');
+  const range = firstAt && lastAt ? `${fmt(firstAt)}~${fmt(lastAt)}` : '';
+  const base = String(baseTitle ?? '').trim() || 'QQ 会话';
+  return range ? `${base}（归档 ${range}）` : `${base}（归档）`;
+}
+
 export async function rotateSession({
   db, q, config, agent, memory, sessionKey, sessionId, generation, logger = null,
 }) {
@@ -86,6 +94,14 @@ export async function rotateSession({
   const range = q.messageRange(db, sessionKey);
   const messageCount = q.countMessages(db, sessionKey);
   const archivedAt = new Date().toISOString();
+
+  // 归档前改标题，带上时间范围（侧边栏里能一眼看出是哪一段）
+  const archivedTitle = formatArchiveTitle(title, range.firstAt, range.lastAt);
+  try {
+    if (typeof agent.renameSession === 'function') await agent.renameSession(sessionId, archivedTitle);
+  } catch (error) {
+    logger?.warn?.('归档标题重命名失败', { key: sessionKey, sessionId, reason: error?.message ?? String(error) });
+  }
 
   // 1) DSH 侧归档（失败也继续：至少本地有记录）
   let archived = false;
