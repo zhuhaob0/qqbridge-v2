@@ -54,7 +54,8 @@ export function createDshAgent({
       return null;
     }
     workspaceIdCache = workspaceId;
-    if (workspaceTitle) {
+    const currentTitle = body?.workspace?.title ?? body?.title ?? '';
+    if (workspaceTitle && currentTitle !== workspaceTitle) {
       try {
         const renamed = await api.workspace.rename({ workspaceId, title: workspaceTitle });
         if (!renamed?.result?.ok) {
