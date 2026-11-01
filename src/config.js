@@ -54,6 +54,8 @@ export const DEFAULTS = {
   },
   social: {
     enabled: true,
+    // 社交循环多久看一次（v1 是 5 秒心跳，这里放慢到 1 小时，省点资源）
+    checkIntervalMs: 60 * 60 * 1000,
     proactiveEnabled: true,
     idleThresholdMs: 30 * 60 * 1000,
     checkMinMs: 45 * 60 * 1000,

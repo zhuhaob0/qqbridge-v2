@@ -24,7 +24,7 @@ export function createSocialLoop({
   runProactive,
   clock = () => Date.now(),
   random = Math.random,
-  intervalMs = 5000,
+  intervalMs = 60 * 60 * 1000,
 } = {}) {
   const states = new Map();
   let timer = null;
@@ -87,6 +87,30 @@ export function createSocialLoop({
     await runProactive(sessionKey, 'qzone');
   }
 
+  /** 主动开口后安排一次精准的冷场检查（不依赖 tick 频率） */
+  function scheduleProbe(key) {
+    const delay = Number(cfg().probeAfterIdleMs ?? 3 * 60 * 1000) + 1000;
+    const timer = setTimeout(async () => {
+      const st = states.get(key);
+      if (!st || st.phase !== 'active') return;
+      const now = clock();
+      const lastAt = lastInboundAt(key);
+      if (now - Math.max(st.lastActiveAt, lastAt) < Number(cfg().probeAfterIdleMs ?? 3 * 60 * 1000)) return;
+      if (!enabled()) return;
+      if (random() >= Number(cfg().probeProbability ?? 0.25)) {
+        st.phase = 'idle';
+        logger?.info?.('社交模式：冷场回观望（定时检查）', { key });
+        return;
+      }
+      logger?.info?.('社交模式：冷场试探（定时检查）', { key });
+      const result = await runProactive(key, 'probe');
+      st.phase = 'probing';
+      st.probeDeadline = clock() + Number(cfg().probeWaitMs ?? 2 * 60 * 1000);
+      st.lastActiveAt = now;
+    }, Math.max(1000, delay));
+    timer.unref?.();
+  }
+
   async function tick() {
     if (!enabled() || busy) return;
     busy = true;
@@ -114,6 +138,7 @@ export function createSocialLoop({
           if (result?.ok && result.sent > 0) {
             st.phase = 'active';
             st.lastActiveAt = now;
+            scheduleProbe(key);
           }
           continue;
         }
