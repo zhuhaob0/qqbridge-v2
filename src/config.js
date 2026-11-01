@@ -34,6 +34,8 @@ export const DEFAULTS = {
     triggers: { at: true, name: true, question: true, probability: 0.15 },
   },
   send: {
+    // 二代模式：模型文本一律不转发，只认发送工具（v1 的规矩）
+    autoForward: false,
     minGapMs: 600,
     maxGapMs: 1800,
     maxPerMinute: 10,

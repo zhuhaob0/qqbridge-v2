@@ -10,7 +10,7 @@ import { createFakeQq } from '../src/qq/fake.js';
 const config = (over = {}) => ({
   qq: { ownerQQ: 100, selfQQ: 200, botNames: [] },
   allow: { private: [1], groups: [], emptyGroupsMeansAll: false },
-  send: { minGapMs: 0, maxGapMs: 0, maxPerMinute: 10, splitThreshold: 10 },
+  send: { minGapMs: 0, maxGapMs: 0, maxPerMinute: 10, splitThreshold: 10, autoForward: true },
   agent: { preset: 'test' },
   ...over,
 });
@@ -47,7 +47,7 @@ function setup({ agentReply = '好的。收到。', memory = null, configOver = 
 test('编排：分条发送并落库为出站消息', async () => {
   const { db, qq, orch } = setup({
     agentReply: '好。收到。',
-    configOver: { send: { minGapMs: 0, maxGapMs: 0, maxPerMinute: 10, splitThreshold: 2 } },
+    configOver: { send: { minGapMs: 0, maxGapMs: 0, maxPerMinute: 10, splitThreshold: 2, autoForward: true } },
   });
   const result = await orch.run('private:1');
   assert.equal(result.ok, true);
@@ -123,5 +123,19 @@ test('编排：会话不存在时报错', async () => {
   const result = await orch.run('private:404');
   assert.equal(result.ok, false);
   assert.match(result.reason, /会话不存在/);
+  db.close();
+});
+
+test('编排：autoForward=false 时模型文本不自动发送（机制上防内心话外泄）', async () => {
+  const { db, qq, orch } = setup({
+    agentReply: '雨花石回了个“哦哦”，这话题就收尾了，我也没再接着往下说。',
+    configOver: { send: { minGapMs: 0, maxGapMs: 0, maxPerMinute: 10, splitThreshold: 10, autoForward: false } },
+  });
+  const result = await orch.run('private:1');
+  assert.equal(result.ok, true);
+  assert.equal(result.parts.length, 0, '不应有自动转发');
+  assert.equal(qq.sent.length, 0, '不应发出任何消息');
+  const outbound = q.recentMessages(db, 'private:1', 20).filter((m) => m.direction === 'outbound');
+  assert.equal(outbound.length, 0);
   db.close();
 });

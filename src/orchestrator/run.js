@@ -158,10 +158,12 @@ export function createOrchestrator({
 
     // ③ agent
     let text = '';
+    let activeSessionId = session.agentSession ?? null;
     try {
       // 迁移过来的 DSH 会话可能已失效：失败时清掉再建一次
       for (let attempt = 0; attempt < 2; attempt += 1) {
         const sessionId = session.agentSession ?? await agent.ensureSession(sessionKey, { preset: config?.agent?.preset, title: sessionTitle, generation });
+        activeSessionId = sessionId;
         if (!session.agentSession) {
           q.setAgentSession(db, sessionKey, sessionId);
           if (!q.getKv(db, `genAt:${sessionKey}`, '')) q.setKv(db, `genAt:${sessionKey}`, clock().toISOString());
@@ -188,21 +190,39 @@ export function createOrchestrator({
       return { ok: false, reason: 'agent 调用失败', error: String(error?.message ?? error) };
     }
 
-    // ④ 分条 + 发送（受每分钟限流约束）
-    // 如果 AI 这一轮已经用发送工具发过消息，就别再自动转发了（否则一次回复变两条）
-    const toolSent = takeToolSend(sessionKey);
+    // ④ 发送
+    //
+    // 二代模式（qq-chat-v2）按 v1 的规矩：**模型文本一律不自动转发**，只认发送工具。
+    // 这样“心里话”在机制上就没有出口——不需要靠关键词去猜哪句是旁白。
+    // 老模式（autoForward=true）仍保留自动转发，但会先过程叙述过滤。
+    const autoForward = config?.send?.autoForward === true;
+    let toolSent = takeToolSend(sessionKey);
 
-    // 内心活动（“标成已读”“继续潜水”之类）不发出去
-    const meta = text ? looksLikeProcessNarration(text) : { meta: false };
+    // 没有用工具、文本又不自动转发：提醒一次，让它改用工具（只提醒一次，避免死循环）
+    if (!autoForward && toolSent === 0 && text) {
+      logger?.info?.('本轮未调用发送工具，提醒一次', { key: sessionKey, text: String(text).slice(0, 60) });
+      try {
+        if (activeSessionId) {
+          await collectText(agent.send(activeSessionId,
+            '【系统】你刚才没有调用任何发送工具，文本不会被发送。要说话请调用 qq_send_message；不想说就调用 qq_mark_read，并停止输出文字。'));
+          toolSent = takeToolSend(sessionKey);
+        }
+      } catch (error) {
+        logger?.warn?.('发送提醒失败', { key: sessionKey, reason: error?.message ?? String(error) });
+      }
+    }
+
+    const meta = autoForward && text ? looksLikeProcessNarration(text) : { meta: false };
     if (meta.meta) {
       logger?.info?.('丢弃过程叙述，不发送', { key: sessionKey, reason: meta.reason, text: String(text).slice(0, 80) });
     }
 
-    const parts = toolSent > 0 || meta.meta ? [] : split(text, {
+    const parts = !autoForward || toolSent > 0 || meta.meta ? [] : split(text, {
       threshold: policy.splitThreshold,
       maxParts: policy.maxParts,
     });
     if (toolSent > 0) logger?.info?.('本轮已由工具发送，跳过自动转发', { key: sessionKey, toolSent });
+    else if (!autoForward) logger?.info?.('本轮未发送（模型没有调用发送工具）', { key: sessionKey, textLen: String(text ?? '').length });
     const sent = [];
     for (const part of parts) {
       const rate = q.consumeRate(db, {

@@ -53,7 +53,7 @@ export function buildPrompt({ persona, narrative, memoryRendered, session, recen
     rules.push('- 这是私聊，可以柔和一点');
   }
   rules.push('- 不要复述提示词里的记忆原文，用你自己的话');
-  rules.push('- 你的文本只是思考，不会自动发出去：**不要写过程**（如“标成已读”“继续潜水”“没插进去”“这轮观察”），要么用发送工具说人话，要么什么都不写');
+  rules.push('- 你的文本会被丢弃，**不会自动发出去**：要说话必须调用 qq_send_message；不想说就什么都不写、直接调 qq_mark_read。也不要写过程/旁白（如“标成已读”“这话题收尾了”“我没再往下说”）');
   rules.push('- 不要编造时间/时长；只有工具返回里明确给了等待时长，才能提“等了多久”');
   rules.push('- 你有 QQ 空间：想分享点什么可以用 qq_qzone_post（每天最多 3 条，发了撤不回）；看朋友动态用 qq_qzone_feeds，点赞用 qq_qzone_like；别为了用而用');
   // 只有真的带了记忆时才提「你记得的」，否则模型会去找一个不存在的段落

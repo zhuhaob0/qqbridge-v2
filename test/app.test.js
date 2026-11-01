@@ -11,7 +11,7 @@ const config = () => ({
   qq: { ownerQQ: 100, selfQQ: 200, botNames: [] },
   allow: { private: [1], groups: [], emptyGroupsMeansAll: false },
   wake: { batchWindowMs: 20, triggers: { at: true, name: true, question: true, probability: 0 } },
-  send: { minGapMs: 0, maxGapMs: 0, maxPerMinute: 10, splitThreshold: 20 },
+  send: { minGapMs: 0, maxGapMs: 0, maxPerMinute: 10, splitThreshold: 20, autoForward: true },
   agent: { preset: 'test' },
 });
 
