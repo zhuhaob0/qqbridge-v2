@@ -8,6 +8,7 @@ import { split } from './splitter.js';
 import * as q from '../storage/queries.js';
 import { channelIdFor, participantsFor } from '../router/session.js';
 import { takeToolSend } from '../tools/stats.js';
+import { looksLikeProcessNarration } from './meta-filter.js';
 import { shouldRotate, rotateSession } from '../archive/rotate.js';
 
 const defaultSleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -190,7 +191,14 @@ export function createOrchestrator({
     // ④ 分条 + 发送（受每分钟限流约束）
     // 如果 AI 这一轮已经用发送工具发过消息，就别再自动转发了（否则一次回复变两条）
     const toolSent = takeToolSend(sessionKey);
-    const parts = toolSent > 0 ? [] : split(text, {
+
+    // 内心活动（“标成已读”“继续潜水”之类）不发出去
+    const meta = text ? looksLikeProcessNarration(text) : { meta: false };
+    if (meta.meta) {
+      logger?.info?.('丢弃过程叙述，不发送', { key: sessionKey, reason: meta.reason, text: String(text).slice(0, 80) });
+    }
+
+    const parts = toolSent > 0 || meta.meta ? [] : split(text, {
       threshold: policy.splitThreshold,
       maxParts: policy.maxParts,
     });
@@ -232,7 +240,7 @@ export function createOrchestrator({
       await sleep(gap);
     }
 
-    if (sent.length > 0 || toolSent > 0) q.setReadThrough(db, sessionKey, clock().toISOString());
+    if (sent.length > 0 || toolSent > 0 || meta.meta) q.setReadThrough(db, sessionKey, clock().toISOString());
 
     const elapsedMs = clock().getTime() - started;
     logger?.info?.('一轮对话完成', { key: sessionKey, parts: sent.length, elapsedMs });

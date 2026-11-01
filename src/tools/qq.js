@@ -211,9 +211,11 @@ export function registerQqTools(registry) {
     },
     async run(ctx, args) {
       const timeout = Math.min(Number(args.timeoutMs ?? 30000), 600000);
+      const startedAt = Date.now();
       const msg = await ctx.bus.waitFor(ctx.sessionKey, { timeoutMs: timeout });
-      if (!msg) return { ok: true, timeout: true, messages: [] };
-      return { ok: true, timeout: false, messages: [msg] };
+      const waitedMs = Date.now() - startedAt;
+      if (!msg) return { ok: true, timeout: true, waitedMs, messages: [] };
+      return { ok: true, timeout: false, waitedMs, messages: [msg] };
     },
   });
 
