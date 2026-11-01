@@ -51,6 +51,22 @@ export function createDshAgent({
     return workspaceId;
   }
 
+  /** 当前 DSH 里已有的会话 id（用于复用，避免每次重启都新建一个） */
+  let knownSessions = null;
+  async function refreshKnownSessions() {
+    try {
+      const raw = await api.sessions.list({});
+      const body = raw?.result?.ok ? raw.result.value : raw;
+      const list = body?.sessions ?? body?.items ?? (Array.isArray(body) ? body : []);
+      knownSessions = new Set(list.map((s) => s?.sessionId).filter(Boolean));
+      return knownSessions;
+    } catch (error) {
+      logger?.warn?.('读取会话列表失败', { reason: error?.message ?? String(error) });
+      knownSessions = null;
+      return null;
+    }
+  }
+
   async function ensureSession(sessionKey, options = {}) {
     if (sessionByKey.has(sessionKey)) return sessionByKey.get(sessionKey);
     const workspaceId = await ensureWorkspace();
@@ -59,22 +75,31 @@ export function createDshAgent({
     if (wantPreset) params.agentPreset = wantPreset;
 
     const selfKey = selfKeyFor(sessionKey);
-    if (selfKey) params.sessionId = selfKey;
+
+    // 先看这个 QQ 会话是否已经有对应的 DSH 会话：
+    // DSH 的 create 在 id 已存在时会**新建一个 uuid 会话**（实测），
+    // 所以必须先 list、命中就复用，否则每次重启都会多一个会话。
+    if (selfKey) {
+      const known = knownSessions ?? await refreshKnownSessions();
+      if (known?.has(selfKey)) {
+        sessionByKey.set(sessionKey, selfKey);
+        api.events?.follow?.(selfKey);
+        logger?.info?.('复用已有的 DSH 会话', { sessionKey, sessionId: selfKey });
+        return selfKey;
+      }
+      params.sessionId = selfKey;
+    }
 
     let raw = await api.sessions.create(params);
     let body = raw?.result?.ok ? raw.result.value : raw;
-    // 会话已存在（例如上次没清理干净）：直接复用同一个 id
     if (!body?.sessionId && selfKey) {
       const message = JSON.stringify(raw?.result?.error ?? raw);
-      if (/exist|duplicate|already/i.test(message)) {
-        body = { sessionId: selfKey };
-        logger?.info?.('复用已存在的 DSH 会话', { sessionKey, sessionId: selfKey });
-      } else {
-        logger?.warn?.('创建 DSH 会话失败', { sessionKey, error: message.slice(0, 200) });
-      }
+      logger?.warn?.('创建 DSH 会话失败', { sessionKey, error: message.slice(0, 200) });
     }
     const sessionId = body?.sessionId ?? null;
     if (!sessionId) throw new Error('DSH 未返回 sessionId');
+    knownSessions?.add(sessionId);
+    if (knownSessions) knownSessions.add(sessionId);
     sessionByKey.set(sessionKey, sessionId);
     api.events?.follow?.(sessionId);
     logger?.info?.('已创建 DSH 会话', { sessionKey, sessionId, preset: wantPreset ?? null });
