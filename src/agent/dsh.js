@@ -6,6 +6,13 @@
  */
 
 import path from 'node:path';
+
+/** DSH 会话 id 要编码 QQ 会话：preset 的 qq-tool-restrict 靠它做跨会话绑定校验 */
+function selfKeyFor(sessionKey) {
+  const m = /^(private|group):(\d{1,20})$/.exec(String(sessionKey ?? ''));
+  if (!m) return null;
+  return `qqb-${m[1] === 'group' ? 'g' : 'p'}-${m[2]}`;
+}
 import { createTurnCollector } from './collector.js';
 
 /**
@@ -44,9 +51,22 @@ export function createDshAgent({
     const wantPreset = options.preset ?? preset;
     if (wantPreset) params.agentPreset = wantPreset;
 
-    const raw = await api.sessions.create(params);
-    const body = raw?.result?.ok ? raw.result.value : raw;
-    const sessionId = body?.sessionId ?? body?.session?.sessionId ?? null;
+    const selfKey = selfKeyFor(sessionKey);
+    if (selfKey) params.sessionId = selfKey;
+
+    let raw = await api.sessions.create(params);
+    let body = raw?.result?.ok ? raw.result.value : raw;
+    // 会话已存在（例如上次没清理干净）：直接复用同一个 id
+    if (!body?.sessionId && selfKey) {
+      const message = JSON.stringify(raw?.result?.error ?? raw);
+      if (/exist|duplicate|already/i.test(message)) {
+        body = { sessionId: selfKey };
+        logger?.info?.('复用已存在的 DSH 会话', { sessionKey, sessionId: selfKey });
+      } else {
+        logger?.warn?.('创建 DSH 会话失败', { sessionKey, error: message.slice(0, 200) });
+      }
+    }
+    const sessionId = body?.sessionId ?? null;
     if (!sessionId) throw new Error('DSH 未返回 sessionId');
     sessionByKey.set(sessionKey, sessionId);
     api.events?.follow?.(sessionId);
