@@ -29,6 +29,7 @@ export function createDshAgent({
   preset = null,
   logger = null,
   turnTimeoutMs = 90000,
+  workspaceTitle = null,
   resolveBase = null,
 } = {}) {
   const waiters = new Map(); // sessionId -> { collector, resolve, reject, timer }
@@ -38,10 +39,16 @@ export function createDshAgent({
 
   async function ensureWorkspace() {
     if (!workspacePath) return null;
-    const value = api.workspace.create({ path: workspacePath });
+    // 相对路径会按 DSH 进程的 cwd 解析（不是桥接的 cwd），所以这里先转绝对路径
+    const absolute = path.resolve(workspacePath);
+    const params = { path: absolute };
+    if (workspaceTitle) params.title = workspaceTitle;
+    const value = api.workspace.create(params);
     const resolved = value?.then ? await value : value;
     const body = resolved?.result?.ok ? resolved.result.value : resolved;
-    return body?.workspace?.workspaceId ?? body?.workspaceId ?? null;
+    const workspaceId = body?.workspace?.workspaceId ?? body?.workspaceId ?? null;
+    if (!workspaceId) logger?.warn?.('创建工作区失败，会话会落到默认工作区', { path: absolute, error: JSON.stringify(resolved?.result?.error ?? {}).slice(0, 200) });
+    return workspaceId;
   }
 
   async function ensureSession(sessionKey, options = {}) {
@@ -185,6 +192,7 @@ export async function createDshAgentFromConfig(config, { logger = null } = {}) {
   return createDshAgent({
     api,
     workspacePath: config?.agent?.sessionCwd ?? null,
+    workspaceTitle: config?.agent?.workspaceTitle ?? 'QQ 聊天',
     preset: config?.agent?.preset ?? null,
     logger,
     resolveBase: () => resolveDshBase({ dir, fallback: config?.agent?.baseUrl ?? '' }),
