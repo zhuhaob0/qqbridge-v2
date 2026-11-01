@@ -68,11 +68,18 @@ if (!lock.ok) {
 const db = openDatabase(config.storagePath ?? './state/qqbridge.db');
 
 // DSH 每次重启都会让旧 sessionId 失效；不清掉会一直挂到超时（表现为「不回复」）
+// 只有「DSH 换了地址」才需要清空会话映射：同一个 DSH 下旧 sessionId 依然有效。
+// 之前每次启动都清，导致每次重启桥接都要重建一遍会话。
 try {
-  const cleared = q.clearAgentSessions(db);
-  if (cleared?.changes) logger?.info?.('已清空过期的 DSH 会话映射', { count: cleared.changes });
+  const agentBase = String(process.env.DSH_BASE_URL ?? config.agent?.baseUrl ?? '');
+  const lastBase = q.getKv(db, 'agent.baseUrl', '');
+  if (agentBase && lastBase !== agentBase) {
+    const cleared = q.clearAgentSessions(db);
+    q.setKv(db, 'agent.baseUrl', agentBase);
+    if (cleared?.changes) logger?.info?.('DSH 地址变化，已清空会话映射', { count: cleared.changes, from: lastBase, to: agentBase });
+  }
 } catch (error) {
-  logger?.warn?.('清空会话映射失败', { reason: error?.message ?? String(error) });
+  logger?.warn?.('检查会话映射失败', { reason: error?.message ?? String(error) });
 }
 const memory = config.memory?.enabled
   ? createMemoryClient({
