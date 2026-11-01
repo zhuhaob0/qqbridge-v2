@@ -192,6 +192,32 @@ export function createSnowLumaTransport({
       return null;
     },
 
+    /** 取语音/音频字节：get_record 优先（url 可能过期）。返回 Buffer 或 null */
+    async getRecord(file, { maxBytes = 5 * 1024 * 1024 } = {}) {
+      if (!file || typeof client.getRecord !== 'function') return null;
+      try {
+        const info = await client.getRecord({ file: String(file) });
+        const pick = (v) => (typeof v === 'string' && v.length > 32 ? v : null);
+        const raw = pick(info?.data) || pick(info?.base64) || pick(info?.file) || pick(info?.raw);
+        if (raw) {
+          const s = raw.startsWith('base64://') ? raw.slice(9) : raw;
+          const buf = Buffer.from(s, 'base64');
+          if (buf.length > 0 && buf.length <= maxBytes) return buf;
+        }
+        const url = info?.url ?? info?.file_url ?? info?.data?.url ?? '';
+        if (url) {
+          const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+          if (res.ok) {
+            const buf = Buffer.from(await res.arrayBuffer());
+            if (buf.length > 0 && buf.length <= maxBytes) return buf;
+          }
+        }
+      } catch (error) {
+        logger?.warn?.('get_record 失败', { reason: error?.message ?? String(error) });
+      }
+      return null;
+    },
+
     /** 直接下载一个图片地址（带超时与大小限制） */
     async downloadImage(url, maxBytes = 1024 * 1024) {
       try {

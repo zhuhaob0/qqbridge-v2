@@ -8,6 +8,9 @@ import { shouldWake } from './wake/policy.js';
 import { createBatcher } from './wake/batcher.js';
 import { createOrchestrator } from './orchestrator/run.js';
 import * as q from './storage/queries.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { downloadAudio, toWav, cleanup } from './speech/audio.js';
 
 export function createApp({
@@ -62,9 +65,25 @@ export function createApp({
     let file = null;
     let wav = null;
     try {
-      if (!media?.url) throw new Error('语音消息没有可用链接');
-      const downloaded = await downloadAudio(media.url);
-      file = downloaded.file;
+      let buffer = null;
+      if (media?.url) {
+        try {
+          const downloaded = await downloadAudio(media.url);
+          file = downloaded.file;
+        } catch (error) {
+          logger?.warn?.('语音 url 下载失败，尝试 get_record', { key: msg.sessionKey, reason: error?.message ?? String(error) });
+        }
+      }
+      if (!file && media?.file && typeof qq.getRecord === 'function') {
+        buffer = await qq.getRecord(media.file);
+        if (buffer) {
+          const tmpDir = path.join(os.tmpdir(), 'qqbridge-speech');
+          fs.mkdirSync(tmpDir, { recursive: true });
+          file = path.join(tmpDir, `voice-${Date.now()}.bin`);
+          fs.writeFileSync(file, buffer);
+        }
+      }
+      if (!file) throw new Error('语音既没有可用链接，也取不到音频字节');
       wav = await toWav(file);
       const started = clock().getTime();
       const text = await speech.transcribe({ audioPath: wav });
