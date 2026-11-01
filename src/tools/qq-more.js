@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import * as q from '../storage/queries.js';
+import { resolveImageSource } from './image-source.js';
 import { parseSessionKey } from '../router/session.js';
 import { ToolError } from './registry.js';
 
@@ -107,7 +108,7 @@ export function registerQqMoreTools(registry) {
 
   registry.register({
     name: 'qq_send_image',
-    description: '发一张图片（只接受 http/https 链接）。',
+    description: '发一张图片。url 可以是图片直链，也可以是普通网页地址（会自动从页面里提取主图）。',
     scope: 'all',
     inputSchema: {
       type: 'object',
@@ -116,12 +117,26 @@ export function registerQqMoreTools(registry) {
     },
     async run(ctx, args) {
       const url = String(args.url ?? '');
-      if (!/^https?:\/\//i.test(url)) throw new ToolError('只接受 http(s) 图片链接', 'bad_url');
+      if (!/^https?:\/\//i.test(url)) throw new ToolError('只接受 http(s) 地址', 'bad_url');
       await rateLimit(ctx, 'image', ctx.sessionKey, ctx.config?.send?.imagesPerMinute ?? 2);
       const send = requirePort(ctx, 'sendImage', '发送图片');
-      const result = await send(ctx.sessionKey, url, { replyToMessageId: args.replyToMessageId });
+
+      // 直链或网页：统一解析成真实图片字节，以 base64 发送（不依赖外链长期有效）
+      let payload = url;
+      let via = 'url';
+      try {
+        const image = await resolveImageSource(url);
+        payload = 'base64://' + image.buffer.toString('base64');
+        via = image.source === 'direct' ? 'direct' : 'page';
+      } catch (error) {
+        // 解析失败就退回原始链接：至少 SnowLuma 还能自己试一次
+        if (!/^https?:\/\//i.test(url)) throw new ToolError(`取图失败：${error?.message ?? error}`, 'image_failed');
+        ctx.logger?.warn?.('图片解析失败，回退原始链接', { url, reason: error?.message ?? String(error) });
+      }
+
+      const result = await send(ctx.sessionKey, payload, { replyToMessageId: args.replyToMessageId });
       if (!result?.ok) throw new ToolError(`发送图片失败：${result?.error ?? '未知原因'}`, 'send_failed');
-      return { ok: true, url, msgId: result.msgId ?? null };
+      return { ok: true, url, via, msgId: result.msgId ?? null };
     },
   });
 
