@@ -104,7 +104,7 @@ export async function rotateSession({
   if (memory) {
     const isGroup = String(sessionKey).startsWith('group:');
     const label = isGroup ? '群聊' : '私聊';
-    const text = `[归档] 第${generation}代${label}会话（${sessionKey}，${String(range.firstAt ?? '').slice(0, 10)} ~ ${String(range.lastAt ?? '').slice(0, 10)}，${messageCount} 条）：${summary.replace(/\s+/g, ' ').slice(0, 400)}`;
+    const text = `[归档] 第${generation}代${label}会话（${sessionKey}，${String(range.firstAt ?? '').slice(0, 10)} ~ ${String(range.lastAt ?? '').slice(0, 10)}，${messageCount} 条，sessionId=${sessionId}）：${summary.replace(/\s+/g, ' ').slice(0, 400)}`;
     try {
       await memory.ingest({
         channel: {
