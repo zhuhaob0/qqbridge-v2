@@ -37,17 +37,33 @@ export function createDshAgent({
   let pumpRunning = false;
   let pumpStop = null;
 
+  // 工作区只建一次：DSH 的 create 对同一路径是幂等的，但标题参数会被忽略，
+  // 需要在创建后单独 rename（已存在的同名工作区会让 rename 报 name-conflict，忽略即可）。
+  let workspaceIdCache = null;
   async function ensureWorkspace() {
     if (!workspacePath) return null;
+    if (workspaceIdCache) return workspaceIdCache;
     // 相对路径会按 DSH 进程的 cwd 解析（不是桥接的 cwd），所以这里先转绝对路径
     const absolute = path.resolve(workspacePath);
-    const params = { path: absolute };
-    if (workspaceTitle) params.title = workspaceTitle;
-    const value = api.workspace.create(params);
+    const value = api.workspace.create({ path: absolute });
     const resolved = value?.then ? await value : value;
     const body = resolved?.result?.ok ? resolved.result.value : resolved;
     const workspaceId = body?.workspace?.workspaceId ?? body?.workspaceId ?? null;
-    if (!workspaceId) logger?.warn?.('创建工作区失败，会话会落到默认工作区', { path: absolute, error: JSON.stringify(resolved?.result?.error ?? {}).slice(0, 200) });
+    if (!workspaceId) {
+      logger?.warn?.('创建工作区失败，会话会落到默认工作区', { path: absolute, error: JSON.stringify(resolved?.result?.error ?? {}).slice(0, 200) });
+      return null;
+    }
+    workspaceIdCache = workspaceId;
+    if (workspaceTitle) {
+      try {
+        const renamed = await api.workspace.rename({ workspaceId, title: workspaceTitle });
+        if (!renamed?.result?.ok) {
+          logger?.debug?.('工作区改名失败（通常同名已存在）', { workspaceId, title: workspaceTitle, error: renamed?.result?.error?.code });
+        }
+      } catch (error) {
+        logger?.debug?.('工作区改名异常', { reason: error?.message ?? String(error) });
+      }
+    }
     return workspaceId;
   }
 
