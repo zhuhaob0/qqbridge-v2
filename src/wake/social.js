@@ -58,10 +58,13 @@ export function createSocialLoop({
     const q = cfg().qzone ?? {};
     if (q.enabled !== true) return false;
     if (postedToday >= Number(q.perDay ?? 3)) return false;
-    const start = Number(q.windowStartHour ?? 21);
-    const end = Number(q.windowEndHour ?? 23);
-    const hour = new Date(now).getHours();
-    if (start <= end ? (hour < start || hour >= end) : (hour < start && hour >= end)) return false;
+    // 时间窗是可选的：不配就任何时间都能发（v1 没有时间限制）
+    if (q.windowStartHour != null && q.windowEndHour != null) {
+      const start = Number(q.windowStartHour);
+      const end = Number(q.windowEndHour);
+      const hour = new Date(now).getHours();
+      if (start <= end ? (hour < start || hour >= end) : (hour < start && hour >= end)) return false;
+    }
     const cooldown = Number(q.cooldownMs ?? 6 * 3600 * 1000);
     if (lastAt && now - lastAt < cooldown) return false;
     return random() < Number(q.probability ?? 0.3);

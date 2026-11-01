@@ -130,3 +130,22 @@ test('社交循环：说说冷却期内不重复尝试', async () => {
   await loop.tick();
   assert.equal(calls.length, 0);
 });
+
+test('社交循环：不配时间窗时任何时间都能发说说', async () => {
+  const calls = [];
+  const store = {};
+  const loop = createSocialLoop({
+    db: {}, q: kvQ(store),
+    config: {
+      qq: { ownerQQ: 2621072338 },
+      social: {
+        enabled: true, proactiveEnabled: true,
+        qzone: { enabled: true, perDay: 3, cooldownMs: 0, probability: 1 },
+      },
+    },
+    runProactive: async (key, purpose) => { calls.push({ key, purpose }); return { ok: true, sent: 1 }; },
+    random: () => 0,
+  });
+  await loop.tick();
+  assert.deepEqual(calls, [{ key: 'private:2621072338', purpose: 'qzone' }]);
+});

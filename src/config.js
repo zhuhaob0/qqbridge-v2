@@ -62,7 +62,7 @@ export const DEFAULTS = {
     probeAfterIdleMs: 3 * 60 * 1000,
     probeProbability: 0.25,
     probeWaitMs: 2 * 60 * 1000,
-    qzone: { enabled: true, perDay: 3, windowStartHour: 21, windowEndHour: 23, cooldownMs: 6 * 3600 * 1000, probability: 0.3 },
+    qzone: { enabled: true, perDay: 3, cooldownMs: 6 * 3600 * 1000, probability: 0.3 },
   },
   rotate: {
     // 会话轮转：消息数或文件大小任一超限就归档旧会话、开新代次
