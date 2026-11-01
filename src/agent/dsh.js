@@ -85,14 +85,14 @@ export function createDshAgent({
   }
 
   /** 让会话标题可读（DSH 默认会用首条消息当标题，QQ 这边首条是【你的性格】） */
-  async function ensureTitle(sessionId, sessionKey) {
+  async function ensureTitle(sessionId, sessionKey, titleOverride = '') {
     if (!sessionId) return;
-    const desired = /^group:(\d{1,20})$/.test(sessionKey)
+    const desired = titleOverride || (/^group:(\d{1,20})$/.test(sessionKey)
       ? 'QQ 群 · ' + sessionKey.slice('group:'.length)
-      : 'QQ 私聊 · ' + sessionKey.slice('private:'.length);
+      : 'QQ 私聊 · ' + sessionKey.slice('private:'.length));
     const current = knownSessions?.get(sessionId) ?? '';
     // 已经是我们起的名字就不动（尊重手动重命名）；只有空标题或自动生成的才改
-    const auto = current === '' || current.startsWith('【') || current.startsWith('session-');
+    const auto = current === '' || current.startsWith('【') || current.startsWith('session-') || /^QQ (私聊|群) ·/.test(current);
     if (!auto || current === desired) return;
     try {
       const raw = await api.sessions.rename({ sessionId, title: desired });
@@ -125,7 +125,7 @@ export function createDshAgent({
         sessionByKey.set(sessionKey, selfKey);
         api.events?.follow?.(selfKey);
         logger?.info?.('复用已有的 DSH 会话', { sessionKey, sessionId: selfKey });
-        await ensureTitle(selfKey, sessionKey);
+        await ensureTitle(selfKey, sessionKey, options.title);
         return selfKey;
       }
       params.sessionId = selfKey;
@@ -143,7 +143,7 @@ export function createDshAgent({
     sessionByKey.set(sessionKey, sessionId);
     api.events?.follow?.(sessionId);
     logger?.info?.('已创建 DSH 会话', { sessionKey, sessionId, preset: wantPreset ?? null });
-    await ensureTitle(sessionId, sessionKey);
+    await ensureTitle(sessionId, sessionKey, options.title);
     return sessionId;
   }
 

@@ -61,6 +61,22 @@ export function createOrchestrator({
     const channelId = channelIdFor(sessionKey);
     const participants = participantsFor(sessionKey, { selfId: 'self' });
 
+    // 会话标题：群名 / 昵称，方便在 DSH 侧边栏分辨
+    let sessionTitle = '';
+    try {
+      if (sessionKey.startsWith('group:')) {
+        const gid = sessionKey.slice('group:'.length);
+        const name = typeof qq.groupName === 'function' ? await qq.groupName(gid) : '';
+        sessionTitle = name ? `QQ 群 · ${name}(${gid})` : `QQ 群 · ${gid}`;
+      } else if (sessionKey.startsWith('private:')) {
+        const uid = sessionKey.slice('private:'.length);
+        const name = typeof qq.userName === 'function' ? await qq.userName(uid) : '';
+        sessionTitle = name ? `QQ 私聊 · ${name}(${uid})` : `QQ 私聊 · ${uid}`;
+      }
+    } catch (error) {
+      logger?.debug?.('取会话标题失败', { key: sessionKey, reason: error?.message ?? String(error) });
+    }
+
     // ① 记忆（失败不影响对话）
     let memoryData = null;
     let memoryMs = 0;
@@ -120,7 +136,7 @@ export function createOrchestrator({
     try {
       // 迁移过来的 DSH 会话可能已失效：失败时清掉再建一次
       for (let attempt = 0; attempt < 2; attempt += 1) {
-        const sessionId = session.agentSession ?? await agent.ensureSession(sessionKey, { preset: config?.agent?.preset });
+        const sessionId = session.agentSession ?? await agent.ensureSession(sessionKey, { preset: config?.agent?.preset, title: sessionTitle });
         if (!session.agentSession) q.setAgentSession(db, sessionKey, sessionId);
         try {
           text = await collectText(agent.send(sessionId, images.length ? promptContent : prompt));

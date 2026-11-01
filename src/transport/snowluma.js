@@ -245,6 +245,52 @@ export function createSnowLumaTransport({
       }
     },
 
+    /** 群名（带进程内缓存，查不到返回空串） */
+    async groupName(groupId) {
+      const id = String(groupId ?? '');
+      if (!/^\d+$/.test(id)) return '';
+      if (nameCache.has('g:' + id)) return nameCache.get('g:' + id);
+      let name = '';
+      try {
+        if (typeof client.getGroupInfo === 'function') {
+          const info = await client.getGroupInfo(Number(id));
+          name = String(info?.group_name ?? info?.data?.group_name ?? '');
+        }
+      } catch { /* 忽略 */ }
+      if (!name && typeof client.getGroupList === 'function') {
+        try {
+          const list = await client.getGroupList();
+          const hit = (Array.isArray(list) ? list : []).find((g) => String(g?.group_id ?? g?.groupId ?? '') === id);
+          name = String(hit?.group_name ?? hit?.groupName ?? '');
+        } catch { /* 忽略 */ }
+      }
+      nameCache.set('g:' + id, name);
+      return name;
+    },
+
+    /** 私聊对象昵称（带缓存，查不到返回空串） */
+    async userName(userId) {
+      const id = String(userId ?? '');
+      if (!/^\d+$/.test(id)) return '';
+      if (nameCache.has('u:' + id)) return nameCache.get('u:' + id);
+      let name = '';
+      try {
+        if (typeof client.getStrangerInfo === 'function') {
+          const info = await client.getStrangerInfo(Number(id));
+          name = String(info?.remark || info?.nickname || info?.data?.remark || info?.data?.nickname || '');
+        }
+      } catch { /* 忽略 */ }
+      if (!name && typeof client.getFriendList === 'function') {
+        try {
+          const list = await client.getFriendList();
+          const hit = (Array.isArray(list) ? list : []).find((f) => String(f?.user_id ?? f?.userId ?? '') === id);
+          name = String(hit?.remark || hit?.nickname || '');
+        } catch { /* 忽略 */ }
+      }
+      nameCache.set('u:' + id, name);
+      return name;
+    },
+
     async groupMembers(groupId) {
       if (typeof client.getGroupMemberList !== 'function') return [];
       try {
