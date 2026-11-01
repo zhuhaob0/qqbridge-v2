@@ -24,6 +24,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -91,6 +92,70 @@ async function gatewayInfo() {
 }
 
 const server = new McpServer({ name: 'snowluma-host', version: '0.2.1-r1' });
+
+
+// ── QQ 空间工具（代理到桥接的 /tools/call）────────────────────────────────
+// QQ 空间不属于 SnowLuma 的 MCP 工具集，但桥接已经实现了 qq_qzone_*，
+// 这里把它们以 mcp__snowluma-host__ 前缀暴露给 QQ 会话。
+async function bridgeCall(name, args) {
+  const c = getConfig();
+  const port = c.console?.port ?? 3100;
+  const token = c.console?.token ?? '';
+  const headers = { 'content-type': 'application/json' };
+  if (token) headers.authorization = 'Bearer ' + token;
+  const res = await fetch('http://127.0.0.1:' + port + '/tools/call', {
+    method: 'POST', headers, body: JSON.stringify({ name, arguments: args }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!data?.ok) throw new Error(data?.error ?? ('桥接返回 ' + res.status));
+  return data.result;
+}
+
+const sessionArgs = { key: z.string(), token: z.string() };
+
+server.tool(
+  'qzone_post',
+  '发一条 QQ 空间说说（自己的空间）。纯文字或带图；每 24 小时最多 3 条，发出去撤不回。',
+  {
+    ...sessionArgs,
+    content: z.string().describe('说说正文'),
+    images: z.array(z.string()).optional().describe('配图：http(s) 链接，或 state/media 下的文件名'),
+  },
+  async (args) => ({ content: [{ type: 'text', text: JSON.stringify(await bridgeCall('qq_qzone_post', args)) }] }),
+);
+
+server.tool(
+  'qzone_my_posts',
+  '看自己 QQ 空间最近发的说说。',
+  { ...sessionArgs, num: z.number().optional() },
+  async (args) => ({ content: [{ type: 'text', text: JSON.stringify(await bridgeCall('qq_qzone_my_posts', args)) }] }),
+);
+
+server.tool(
+  'qzone_feeds',
+  '看好友的 QQ 空间动态（含主人），返回 tid 可用于点赞/评论。',
+  { ...sessionArgs, num: z.number().optional() },
+  async (args) => ({ content: [{ type: 'text', text: JSON.stringify(await bridgeCall('qq_qzone_feeds', args)) }] }),
+);
+
+server.tool(
+  'qzone_like',
+  '给一条说说点赞（每人每 24 小时最多 5 条）。',
+  {
+    ...sessionArgs,
+    tid: z.string(),
+    targetUin: z.union([z.string(), z.number()]).optional(),
+    abstime: z.number().optional(),
+  },
+  async (args) => ({ content: [{ type: 'text', text: JSON.stringify(await bridgeCall('qq_qzone_like', args)) }] }),
+);
+
+server.tool(
+  'qzone_comment',
+  '评论一条说说（发出撤不回：每 10 分钟 2 条、每天 30 条）。',
+  { ...sessionArgs, tid: z.string(), content: z.string(), targetUin: z.union([z.string(), z.number()]).optional() },
+  async (args) => ({ content: [{ type: 'text', text: JSON.stringify(await bridgeCall('qq_qzone_comment', args)) }] }),
+);
 
 server.tool(
   'snowluma_status',
