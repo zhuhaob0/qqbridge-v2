@@ -64,6 +64,7 @@ export const DEFAULTS = {
     probeAfterIdleMs: 3 * 60 * 1000,
     probeProbability: 0.25,
     probeWaitMs: 2 * 60 * 1000,
+    private: { enabled: true, ownerOnly: true, minIdleHours: 24, perDay: 1, cooldownMs: 6 * 3600 * 1000, probability: 0.2 },
     qzone: { enabled: true, perDay: 3, cooldownMs: 6 * 3600 * 1000, probability: 0.3 },
   },
   rotate: {

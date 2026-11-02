@@ -149,3 +149,48 @@ test('社交循环：不配时间窗时任何时间都能发说说', async () =>
   await loop.tick();
   assert.deepEqual(calls, [{ key: 'private:2621072338', purpose: 'qzone' }]);
 });
+
+test('社交循环：owner 长时间没聊时主动私聊（每天最多 1 条）', async () => {
+  const calls = [];
+  const store = {};
+  const q = {
+    ...kvQ(store, { lastInboundMsAgo: 30 * 3600 * 1000 }),
+    getSession: () => ({ sessionKey: 'private:2621072338', agentSession: 'qqb-p-2621072338' }),
+  };
+  const loop = createSocialLoop({
+    db: {}, q,
+    config: {
+      qq: { ownerQQ: 2621072338 },
+      social: {
+        enabled: true, proactiveEnabled: true,
+        private: { enabled: true, ownerOnly: true, minIdleHours: 24, perDay: 1, cooldownMs: 0, probability: 1 },
+      },
+    },
+    runProactive: async (key, purpose) => { calls.push({ key, purpose }); return { ok: true, sent: 1 }; },
+    random: () => 0,
+  });
+  await loop.tick();
+  assert.deepEqual(calls, [{ key: 'private:2621072338', purpose: 'private' }]);
+  assert.equal(store['private:proactive:day'], '1');
+});
+
+test('社交循环：主动私聊受「每天 1 条」限制', async () => {
+  const calls = [];
+  const today = new Date().toISOString().slice(0, 10);
+  const store = { 'private:proactive:dayKey': today, 'private:proactive:day': '1' };
+  const q = {
+    ...kvQ(store, { lastInboundMsAgo: 30 * 3600 * 1000 }),
+    getSession: () => ({ sessionKey: 'private:2621072338' }),
+  };
+  const loop = createSocialLoop({
+    db: {}, q,
+    config: {
+      qq: { ownerQQ: 2621072338 },
+      social: { enabled: true, proactiveEnabled: true, private: { enabled: true, perDay: 1, cooldownMs: 0, probability: 1, minIdleHours: 1 } },
+    },
+    runProactive: async (key, purpose) => { calls.push(purpose); return { ok: true, sent: 1 }; },
+    random: () => 0,
+  });
+  await loop.tick();
+  assert.equal(calls.length, 0);
+});

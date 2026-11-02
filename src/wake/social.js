@@ -70,6 +70,36 @@ export function createSocialLoop({
     return random() < Number(q.probability ?? 0.3);
   }
 
+  async function maybeProactivePrivate(now) {
+    const qc = cfg().private ?? {};
+    if (qc.enabled !== true) return;
+    const ownerQQ = config?.qq?.ownerQQ;
+    if (!ownerQQ) return;
+    const sessionKey = 'private:' + ownerQQ;
+    const session = q.getSession?.(db, sessionKey);
+    if (!session) return;
+
+    const dayKey = new Date(now).toISOString().slice(0, 10);
+    const storedDay = q.getKv?.(db, 'private:proactive:dayKey', '');
+    const usedToday = storedDay === dayKey ? Number(q.getKv?.(db, 'private:proactive:day', '0')) : 0;
+    if (usedToday >= Number(qc.perDay ?? 1)) return;
+
+    const lastAt = Number(q.getKv?.(db, 'private:proactive:last', '0')) || 0;
+    if (lastAt && now - lastAt < Number(qc.cooldownMs ?? 6 * 3600 * 1000)) return;
+
+    const lastInbound = lastInboundAt(sessionKey);
+    const idleHours = Number(qc.minIdleHours ?? 24);
+    if (lastInbound && now - lastInbound < idleHours * 3600 * 1000) return;
+
+    if (random() >= Number(qc.probability ?? 0.2)) return;
+
+    q.setKv?.(db, 'private:proactive:last', String(now));
+    q.setKv?.(db, 'private:proactive:dayKey', dayKey);
+    q.setKv?.(db, 'private:proactive:day', String(usedToday + 1));
+    logger?.info?.('社交模式：尝试主动私聊（owner）', { sessionKey, idleHours });
+    await runProactive(sessionKey, 'private');
+  }
+
   async function maybePostQzone(now) {
     const ownerQQ = config?.qq?.ownerQQ;
     if (!ownerQQ) return;
@@ -116,6 +146,7 @@ export function createSocialLoop({
     busy = true;
     try {
       const now = clock();
+      await maybeProactivePrivate(now);
       await maybePostQzone(now);
       const sessions = q.listSessions(db, 200).filter((s) => String(s.sessionKey ?? s.session_key ?? '').startsWith('group:'));
       for (const item of sessions) {
