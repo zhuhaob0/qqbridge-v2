@@ -150,47 +150,72 @@ test('社交循环：不配时间窗时任何时间都能发说说', async () =>
   assert.deepEqual(calls, [{ key: 'private:2621072338', purpose: 'qzone' }]);
 });
 
-test('社交循环：owner 长时间没聊时主动私聊（每天最多 1 条）', async () => {
+
+function privateQ(store, { lastInboundMsAgo = 30 * 3600 * 1000, sessions = [] } = {}) {
+  return {
+    listSessions: () => [],
+    latestInbound: (db, key) => ({ at: new Date(Date.now() - lastInboundMsAgo).toISOString() }),
+    getSession: (db, key) => (sessions.includes(key) ? { sessionKey: key } : null),
+    getKv: (db, key, fallback) => (key in store ? store[key] : fallback),
+    setKv: (db, key, value) => { store[key] = value; },
+  };
+}
+
+test('社交循环：owner 长时间没聊时主动私聊', async () => {
   const calls = [];
   const store = {};
-  const q = {
-    ...kvQ(store, { lastInboundMsAgo: 30 * 3600 * 1000 }),
-    getSession: () => ({ sessionKey: 'private:2621072338', agentSession: 'qqb-p-2621072338' }),
-  };
+  const q = privateQ(store, { sessions: ['private:2621072338'] });
   const loop = createSocialLoop({
     db: {}, q,
     config: {
       qq: { ownerQQ: 2621072338 },
-      social: {
-        enabled: true, proactiveEnabled: true,
-        private: { enabled: true, ownerOnly: true, minIdleHours: 24, perDay: 1, cooldownMs: 0, probability: 1 },
-      },
+      social: { enabled: true, proactiveEnabled: true, private: {
+        enabled: true,
+        owner: { minIdleHours: 24, perDay: 1, cooldownMs: 0, probability: 1 },
+      } },
     },
     runProactive: async (key, purpose) => { calls.push({ key, purpose }); return { ok: true, sent: 1 }; },
     random: () => 0,
   });
   await loop.tick();
   assert.deepEqual(calls, [{ key: 'private:2621072338', purpose: 'private' }]);
-  assert.equal(store['private:proactive:day'], '1');
 });
 
-test('社交循环：主动私聊受「每天 1 条」限制', async () => {
-  const calls = [];
-  const today = new Date().toISOString().slice(0, 10);
-  const store = { 'private:proactive:dayKey': today, 'private:proactive:day': '1' };
-  const q = {
-    ...kvQ(store, { lastInboundMsAgo: 30 * 3600 * 1000 }),
-    getSession: () => ({ sessionKey: 'private:2621072338' }),
+test('社交循环：L4 好友也会主动私聊，L3 频率更低', async () => {
+  const makeLoop = (randomValue) => {
+    const calls = [];
+    const store = {};
+    const q = privateQ(store, { sessions: ['private:111', 'private:222'] });
+    const loop = createSocialLoop({
+      db: {}, q,
+      memory: { relationships: async () => ([
+        { contactId: 'user:111', tier: 'L4' },
+        { contactId: 'user:222', tier: 'L3' },
+      ]) },
+      config: {
+        qq: { ownerQQ: 2621072338 },
+        social: { enabled: true, proactiveEnabled: true, private: {
+          enabled: true,
+          owner: { minIdleHours: 9999, probability: 0 },
+          tiers: {
+            L4: { minIdleHours: 0, perDay: 1, cooldownMs: 0, probability: 0.15 },
+            L3: { minIdleHours: 0, perDay: 1, cooldownMs: 0, probability: 0.1 },
+          },
+        } },
+      },
+      runProactive: async (key, purpose) => { calls.push(key); return { ok: true, sent: 1 }; },
+      random: () => randomValue,
+    });
+    return { loop, calls };
   };
-  const loop = createSocialLoop({
-    db: {}, q,
-    config: {
-      qq: { ownerQQ: 2621072338 },
-      social: { enabled: true, proactiveEnabled: true, private: { enabled: true, perDay: 1, cooldownMs: 0, probability: 1, minIdleHours: 1 } },
-    },
-    runProactive: async (key, purpose) => { calls.push(purpose); return { ok: true, sent: 1 }; },
-    random: () => 0,
-  });
-  await loop.tick();
-  assert.equal(calls.length, 0);
+
+  // 0.12：命中 L4（0.12 < 0.15），不命中 L3（0.12 > 0.1）
+  const a = makeLoop(0.12);
+  await a.loop.tick();
+  assert.deepEqual(a.calls, ['private:111']);
+
+  // 0.05：两者都命中
+  const b = makeLoop(0.05);
+  await b.loop.tick();
+  assert.deepEqual(b.calls.sort(), ['private:111', 'private:222']);
 });

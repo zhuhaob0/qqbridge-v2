@@ -91,6 +91,17 @@ export function createMemoryClient({
       return call('/v1/import', { tenant, events, facts, interactions });
     },
 
+    /** 关系列表（tier/score），用于决定主动私聊频率 */
+    async relationships() {
+      try {
+        const res = await request('GET', `/v1/relationships?tenant=${encodeURIComponent(tenant)}`);
+        const list = Array.isArray(res?.relationships) ? res.relationships : [];
+        return list.map((r) => ({ contactId: r.contactId, tier: r.tier, score: r.score, lastInteract: r.lastInteract }));
+      } catch {
+        return [];
+      }
+    },
+
     async narrative(tenantOverride) {
       const t = encodeURIComponent(tenantOverride ?? tenant);
       const res = await request('GET', `/v1/narrative?tenant=${t}`);

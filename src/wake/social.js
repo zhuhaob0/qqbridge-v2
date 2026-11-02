@@ -20,7 +20,7 @@
  */
 
 export function createSocialLoop({
-  db, q, config, logger = null,
+  db, q, config, logger = null, memory = null,
   runProactive,
   clock = () => Date.now(),
   random = Math.random,
@@ -70,34 +70,62 @@ export function createSocialLoop({
     return random() < Number(q.probability ?? 0.3);
   }
 
+  /** 按 tier 取规则：owner > L4 > L3 */
+  function privateRuleFor(tier) {
+    const qc = cfg().private ?? {};
+    const tiers = qc.tiers ?? {};
+    if (tier === 'owner') return { ...(qc.owner ?? {}), enabled: qc.enabled === true };
+    const rule = tiers[tier] ?? null;
+    if (!rule || rule.enabled === false) return null;
+    return rule;
+  }
+
   async function maybeProactivePrivate(now) {
     const qc = cfg().private ?? {};
     if (qc.enabled !== true) return;
     const ownerQQ = config?.qq?.ownerQQ;
-    if (!ownerQQ) return;
-    const sessionKey = 'private:' + ownerQQ;
-    const session = q.getSession?.(db, sessionKey);
-    if (!session) return;
+    const candidates = [];
+    if (ownerQQ) candidates.push({ sessionKey: 'private:' + ownerQQ, tier: 'owner' });
 
-    const dayKey = new Date(now).toISOString().slice(0, 10);
-    const storedDay = q.getKv?.(db, 'private:proactive:dayKey', '');
-    const usedToday = storedDay === dayKey ? Number(q.getKv?.(db, 'private:proactive:day', '0')) : 0;
-    if (usedToday >= Number(qc.perDay ?? 1)) return;
+    // L3/L4 好友：来自 mnema 关系表
+    try {
+      const rels = await memory?.relationships?.() ?? [];
+      for (const r of rels) {
+        const qq = String(r.contactId ?? '').split(':').pop();
+        if (!qq || qq === String(ownerQQ)) continue;
+        if (r.tier !== 'L3' && r.tier !== 'L4') continue;
+        candidates.push({ sessionKey: 'private:' + qq, tier: r.tier });
+      }
+    } catch (error) {
+      logger?.debug?.('读取关系失败，跳过 L3/L4 主动私聊', { reason: error?.message ?? String(error) });
+    }
 
-    const lastAt = Number(q.getKv?.(db, 'private:proactive:last', '0')) || 0;
-    if (lastAt && now - lastAt < Number(qc.cooldownMs ?? 6 * 3600 * 1000)) return;
+    for (const { sessionKey, tier } of candidates) {
+      const rule = privateRuleFor(tier);
+      if (!rule) continue;
+      const session = q.getSession?.(db, sessionKey);
+      if (!session) continue;
 
-    const lastInbound = lastInboundAt(sessionKey);
-    const idleHours = Number(qc.minIdleHours ?? 24);
-    if (lastInbound && now - lastInbound < idleHours * 3600 * 1000) return;
+      const dayKey = new Date(now).toISOString().slice(0, 10);
+      const keyPrefix = 'private:proactive:' + sessionKey;
+      const storedDay = q.getKv?.(db, keyPrefix + ':dayKey', '');
+      const usedToday = storedDay === dayKey ? Number(q.getKv?.(db, keyPrefix + ':day', '0')) : 0;
+      if (usedToday >= Number(rule.perDay ?? 1)) continue;
 
-    if (random() >= Number(qc.probability ?? 0.2)) return;
+      const lastAt = Number(q.getKv?.(db, keyPrefix + ':last', '0')) || 0;
+      if (lastAt && now - lastAt < Number(rule.cooldownMs ?? 6 * 3600 * 1000)) continue;
 
-    q.setKv?.(db, 'private:proactive:last', String(now));
-    q.setKv?.(db, 'private:proactive:dayKey', dayKey);
-    q.setKv?.(db, 'private:proactive:day', String(usedToday + 1));
-    logger?.info?.('社交模式：尝试主动私聊（owner）', { sessionKey, idleHours });
-    await runProactive(sessionKey, 'private');
+      const lastInbound = lastInboundAt(sessionKey);
+      if (lastInbound && now - lastInbound < Number(rule.minIdleHours ?? 24) * 3600 * 1000) continue;
+
+      if (random() >= Number(rule.probability ?? 0.2)) continue;
+
+      q.setKv?.(db, keyPrefix + ':last', String(now));
+      q.setKv?.(db, keyPrefix + ':dayKey', dayKey);
+      q.setKv?.(db, keyPrefix + ':day', String(usedToday + 1));
+      logger?.info?.('社交模式：尝试主动私聊', { sessionKey, tier });
+      await runProactive(sessionKey, 'private');
+    }
   }
 
   async function maybePostQzone(now) {

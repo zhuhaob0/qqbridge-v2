@@ -133,7 +133,7 @@ transport?.start();
 let social = null;
 if (!flags.dryRun && config?.social?.enabled !== false) {
   social = createSocialLoop({
-    db, q, config, logger,
+    db, q, config, logger, memory,
     intervalMs: config?.social?.checkIntervalMs ?? 3600000,
     runProactive: (sessionKey, purpose) => runProactiveTurn({
       db, q, config, agent, memory, qq: qq ?? transport, logger, sessionKey, purpose,
